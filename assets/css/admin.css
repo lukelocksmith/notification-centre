@@ -1,0 +1,4 @@
+/* Hide the default Custom Fields metabox for Notification CPT */
+#postcustom {
+    display: none !important;
+}

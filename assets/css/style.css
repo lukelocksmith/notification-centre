@@ -1,0 +1,1482 @@
+/* Notification Centre - Modern Apple-like Style */
+
+:root {
+    /* Background colors */
+    --nc-bg: #ffffff;
+    --nc-bg-glass: rgba(255, 255, 255, 0.95);
+    --nc-border: #e5e5e5;
+    --nc-border-color: rgba(0, 0, 0, 0.08);
+    --nc-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.12);
+    --nc-shadow-hover: 0 15px 50px -10px rgba(0, 0, 0, 0.18);
+
+    /* Border radius */
+    --nc-radius: 16px;
+    --nc-item-radius: 12px;
+
+    /* Colors */
+    --nc-primary: #007AFF;
+    /* Apple Blue - for accents/buttons */
+    --nc-danger: #FF3B30;
+    /* Apple Red - for badge/alerts */
+
+    /* Text colors */
+    --nc-text: #1d1d1f;
+    --nc-text-secondary: #86868b;
+
+    /* Bell & Badge */
+    --nc-bell-bg: transparent;
+    --nc-badge-bg: #FF3B30;
+    /* Red for new notifications */
+    --nc-badge-text: #ffffff;
+
+    /* Close button */
+    --nc-close-color: #1d1d1f;
+    --nc-close-bg: rgba(0, 0, 0, 0.05);
+
+    /* Typography */
+    --nc-font: inherit;
+}
+
+/* Base resets within NC to ensure inheritance */
+.nc-drawer *,
+.nc-toast *,
+.nc-topbar * {
+    font-family: var(--nc-font);
+    box-sizing: border-box;
+}
+
+/* Reset theme overrides for NC elements */
+.nc-drawer,
+.nc-toast,
+.nc-topbar,
+.nc-drawer *,
+.nc-toast *,
+.nc-topbar * {
+    margin: 0;
+    padding: 0;
+    line-height: 1.4;
+    letter-spacing: normal;
+    text-transform: none;
+    font-weight: normal;
+    font-style: normal;
+}
+
+/* Specific element resets */
+.nc-drawer p,
+.nc-toast p,
+.nc-topbar p,
+.nc-drawer span,
+.nc-toast span,
+.nc-topbar span {
+    margin: 0;
+    padding: 0;
+    line-height: 1.4;
+}
+
+.nc-drawer h1,
+.nc-drawer h2,
+.nc-drawer h3,
+.nc-drawer h4,
+.nc-drawer h5,
+.nc-drawer h6,
+.nc-toast h1,
+.nc-toast h2,
+.nc-toast h3,
+.nc-toast h4,
+.nc-toast h5,
+.nc-toast h6,
+.nc-topbar h1,
+.nc-topbar h2,
+.nc-topbar h3,
+.nc-topbar h4,
+.nc-topbar h5,
+.nc-topbar h6 {
+    margin: 0;
+    padding: 0;
+    line-height: 1.2;
+    font-weight: 600;
+}
+
+.nc-drawer a,
+.nc-toast a,
+.nc-topbar a {
+    text-decoration: none;
+}
+
+.nc-drawer button,
+.nc-toast button,
+.nc-topbar button {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    border: none;
+    background: none;
+    cursor: pointer;
+}
+
+/* Bell Icon */
+.nc-bell-container {
+    position: relative;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 6px;
+    border-radius: var(--nc-bell-radius, 50%);
+    background: var(--nc-bell-bg, transparent);
+    transition: background 0.3s, color 0.3s;
+}
+
+.nc-bell-container:hover {
+    background: var(--nc-bell-hover-bg, rgba(0, 0, 0, 0.05));
+}
+
+.nc-bell-container:hover .nc-bell-icon svg {
+    fill: var(--nc-bell-hover-color, #007AFF);
+    stroke: var(--nc-bell-hover-color, #007AFF);
+}
+
+@keyframes nc-pulse {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.1);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+.nc-bell-container.nc-pulse-animation .nc-bell-icon {
+    animation: nc-pulse 2s infinite ease-in-out;
+}
+
+.nc-bell-icon {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    line-height: 0;
+}
+
+.nc-bell-icon svg {
+    fill: var(--nc-bell-color, #000);
+    stroke: var(--nc-bell-color, #000);
+    transition: fill 0.3s, stroke 0.3s;
+}
+
+.nc-badge {
+    position: absolute;
+    top: -4px;
+    right: -2px;
+    background-color: var(--nc-badge-bg, #ff3b30);
+    color: var(--nc-badge-text, #fff);
+    font-size: 7px;
+    font-weight: bold;
+    width: 12px;
+    height: 12px;
+    min-width: 12px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    z-index: 2;
+    box-shadow: none;
+}
+
+.nc-badge.dot {
+    min-width: 10px;
+    height: 10px;
+    width: 10px;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 0;
+    /* Hide text */
+    top: 4px;
+    right: 4px;
+}
+
+/* Drawer */
+.nc-drawer {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    bottom: 10px;
+    width: var(--nc-drawer-width, 400px);
+    max-width: calc(100vw - 20px);
+    height: auto;
+    background: var(--nc-bg-glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: var(--nc-radius);
+    box-shadow: var(--nc-shadow);
+    z-index: 99999;
+    transform: translateX(120%);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    /* iOS spring-like */
+    display: flex;
+    flex-direction: column;
+}
+
+.nc-drawer.open {
+    transform: translateX(0);
+}
+
+.nc-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(2px);
+    z-index: 99998;
+    display: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.nc-overlay.open {
+    display: block;
+    opacity: 1;
+}
+
+body.nc-scroll-lock {
+    overflow: hidden;
+}
+
+.nc-drawer-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--nc-border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.5);
+    border-top-left-radius: var(--nc-radius);
+    border-top-right-radius: var(--nc-radius);
+}
+
+/* Dropdown Mode */
+.nc-drawer.nc-mode-dropdown {
+    position: absolute;
+    /* Positioning handled by JS */
+    width: 350px;
+    height: auto;
+    max-height: 500px;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+    left: auto;
+    right: auto;
+    transform: none;
+    top: auto;
+    bottom: auto;
+    z-index: 99999;
+    /* Fix for overflow and scrolling */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Close button visibility in dropdown mode is controlled by JS */
+
+/* Toast container in dropdown mode - positioned under dropdown */
+.nc-toast-container.nc-mode-dropdown {
+    position: absolute;
+    width: 350px;
+    left: auto;
+    right: auto;
+    top: auto;
+    bottom: auto;
+    z-index: 100000;
+}
+
+/* Force scroll on content in dropdown mode */
+.nc-drawer.nc-mode-dropdown .nc-drawer-content {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.nc-drawer-header h3 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--nc-text);
+    letter-spacing: -0.5px;
+}
+
+.nc-close-drawer {
+    background: var(--nc-close-bg, rgba(0, 0, 0, 0.05));
+    border: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--nc-close-color, #666);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.nc-close-drawer:hover {
+    background: var(--nc-close-hover-bg, rgba(0, 0, 0, 0.1));
+    color: var(--nc-close-hover-color, #ff3b30);
+}
+
+.nc-drawer-content {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    /* Critical for flex scrolling */
+    padding: 20px;
+    /* Custom Scrollbar */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+.nc-drawer-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.nc-drawer-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.nc-drawer-content::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 10px;
+}
+
+/* Compact Adjustments */
+.nc-item {
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--nc-border, rgba(255, 255, 255, 0.8));
+    border-radius: var(--nc-item-radius);
+    margin-bottom: 10px;
+    /* Reduced from 15 */
+    padding: 12px;
+    /* Reduced from 16 */
+    transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.nc-item:hover {
+    background: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+    transform: scale(1.01);
+}
+
+.nc-item.unread {
+    background: #fff;
+    box-shadow: 0 4px 15px rgba(0, 122, 255, 0.08);
+}
+
+/* "NOWE" badge for unread notifications */
+.nc-new-badge {
+    display: inline-block;
+    background: var(--nc-badge-bg, #ff3b30) !important;
+    color: var(--nc-badge-text, #fff) !important;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 6px !important;
+    border-radius: 4px;
+    margin-right: 10px !important;
+    margin-left: 0 !important;
+    vertical-align: middle;
+}
+
+.nc-item.read .nc-new-badge {
+    display: none;
+}
+
+.nc-item.read {
+    opacity: 0.9;
+    filter: grayscale(0.5);
+}
+
+.nc-item-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    /* Reduced from 6 */
+    font-size: 10px;
+    /* Sligthly smaller meta */
+    font-weight: 500;
+    text-transform: uppercase;
+    color: var(--nc-text-secondary);
+    letter-spacing: 0.5px;
+}
+
+.nc-dismiss,
+.nc-toast-close {
+    background: var(--nc-close-bg, rgba(0, 0, 0, 0.08));
+    border: none;
+    color: var(--nc-close-color, #666);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 0;
+    line-height: 1;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nc-dismiss {
+    opacity: 0.7;
+    transition: opacity 0.2s, color 0.2s, background 0.2s;
+}
+
+.nc-dismiss:hover {
+    opacity: 1;
+    color: var(--nc-close-hover-color, #ff3b30);
+    background: var(--nc-close-hover-bg, rgba(0, 0, 0, 0.1));
+}
+
+.nc-item-body h4 {
+    margin: 0 0 3px 0;
+    /* Reduced from 6 */
+    font-size: 14px;
+    /* Slightly smaller title */
+    font-weight: 600;
+    color: var(--nc-text);
+    line-height: 1.2;
+}
+
+.nc-content {
+    font-size: 13px;
+    color: #444;
+    /* Slightly darker than secondary */
+    line-height: 1.4;
+    margin-bottom: 8px;
+    /* Reduced from 12 */
+}
+
+/* ============================================
+   COUNTDOWN TIMER
+   ============================================ */
+.nc-countdown {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 12px 0;
+    font-family: inherit;
+}
+
+.nc-countdown-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--nc-text, #1d1d1f);
+}
+
+.nc-countdown-timer {
+    display: flex;
+    gap: 6px;
+}
+
+.nc-countdown-segment {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 42px;
+    padding: 6px 8px;
+    background: var(--nc-countdown-bg, transparent);
+    border-radius: var(--nc-item-radius, 8px);
+}
+
+.nc-countdown-value {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--nc-countdown-value, #1d1d1f);
+}
+
+.nc-countdown-unit {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--nc-countdown-unit, #666);
+    margin-top: 3px;
+}
+
+.nc-countdown-separator {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--nc-text-secondary, #666);
+    align-self: center;
+    margin-bottom: 14px;
+}
+
+/* Countdown in Top Bar - more compact */
+.nc-topbar .nc-countdown {
+    margin: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.nc-toast.hiding {
+    animation: ncFadeOut 0.3s forwards;
+    pointer-events: none;
+}
+
+.nc-topbar .nc-countdown-label {
+    color: inherit;
+    opacity: 0.9;
+}
+
+.nc-topbar .nc-countdown-segment {
+    background: transparent;
+    min-width: 32px;
+    padding: 3px 5px;
+}
+
+.nc-topbar .nc-countdown-value {
+    font-size: 14px;
+    color: inherit;
+}
+
+.nc-topbar .nc-countdown-unit {
+    font-size: 8px;
+    color: inherit;
+    opacity: 0.8;
+}
+
+.nc-topbar .nc-countdown-separator {
+    color: inherit;
+    opacity: 0.7;
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+/* Countdown in Toast - compact */
+.nc-toast .nc-countdown {
+    margin: 6px 0;
+}
+
+/* Expired state */
+.nc-countdown.expired .nc-countdown-value {
+    color: var(--nc-danger, #ff3b30);
+}
+
+.nc-content.line-clamp {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.nc-expand-btn {
+    background: none;
+    border: none;
+    color: var(--nc-primary);
+    padding: 0;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 8px;
+    display: inline-block;
+}
+
+.nc-btn {
+    display: inline-block;
+    background: var(--nc-btn-bg, #007AFF);
+    color: var(--nc-btn-text, #fff) !important;
+    padding: 6px 12px;
+    border-radius: var(--nc-item-radius, 12px);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 500;
+    margin-top: 2px;
+    transition: all 0.2s;
+    border: none;
+}
+
+.nc-btn:hover {
+    background: var(--nc-btn-hover-bg, #0056b3);
+    color: var(--nc-btn-hover-text, #fff) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(0, 122, 255, 0.3);
+}
+
+.nc-btn-toast {
+    display: inline-block;
+    background: var(--nc-btn-bg, #007AFF);
+    color: var(--nc-btn-text, #fff) !important;
+    padding: 6px 12px;
+    border-radius: var(--nc-item-radius, 12px);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 8px;
+    transition: all 0.2s;
+    border: none;
+}
+
+.nc-btn-toast:hover {
+    background: var(--nc-btn-hover-bg, #0056b3);
+    color: var(--nc-btn-hover-text, #fff) !important;
+    transform: translateY(-1px);
+}
+
+.nc-drawer {
+    position: fixed;
+    top: 0;
+    right: -400px;
+    width: 380px;
+    height: 100vh;
+    background: var(--nc-bg, rgba(30, 30, 30, 0.95));
+    /* Variable */
+    /* Glassmorphism */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-left: none;
+    box-shadow: -5px 0 30px rgba(0, 0, 0, 0.5);
+    transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    color: var(--nc-text, #ffffff);
+    /* Variable */
+}
+
+@media (max-width: 480px) {
+    .nc-drawer {
+        width: 100%;
+        right: -100%;
+        border-left: none;
+    }
+}
+
+.nc-drawer.open {
+    right: 0;
+}
+
+.nc-drawer-footer {
+    padding: 15px;
+    border-top: 1px solid var(--nc-border-color);
+    text-align: center;
+    background: rgba(255, 255, 255, 0.5);
+    border-bottom-left-radius: var(--nc-radius);
+    border-bottom-right-radius: var(--nc-radius);
+}
+
+#nc-mark-all-read {
+    background: none;
+    border: none;
+    color: var(--nc-text-secondary);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+#nc-mark-all-read:hover {
+    color: var(--nc-primary);
+}
+
+/* Toasts - Dark iOS Style */
+.nc-toast-container {
+    position: fixed;
+    top: var(--nc-toast-top, 20px);
+    bottom: var(--nc-toast-bottom, auto);
+    left: var(--nc-toast-left, auto);
+    right: var(--nc-toast-right, 20px);
+    z-index: 100000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+}
+
+@media (max-width: 480px) {
+    .nc-toast-container {
+        left: 10px;
+        right: 10px;
+        bottom: 20px;
+    }
+}
+
+.nc-toast {
+    pointer-events: auto;
+    background: var(--nc-bg, rgba(40, 40, 40, 0.85));
+    /* Variable */
+    /* Dark Glass */
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    border: 1px solid var(--nc-border, rgba(255, 255, 255, 0.15));
+    /* Variable */
+    border-radius: var(--nc-item-radius, 14px);
+    padding: 14px;
+    width: 320px;
+    /* Matching image */
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    width: 340px;
+    max-width: 100%;
+    box-sizing: border-box;
+    animation: slideInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+    color: var(--nc-text, #1d1d1f);
+}
+
+.nc-toast-header {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    /* Very subtle separator */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.nc-toast-header strong {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--nc-text);
+}
+
+.nc-toast-close {
+    border: none;
+    background: var(--nc-close-bg, transparent);
+    font-size: 18px;
+    line-height: 0.8;
+    cursor: pointer;
+    color: var(--nc-close-color, #666);
+    opacity: 0.7;
+    transition: color 0.2s, background 0.2s, opacity 0.2s;
+    border-radius: var(--nc-item-radius, 4px);
+    padding: 4px;
+}
+
+.nc-toast-close:hover {
+    color: var(--nc-close-hover-color, #ff3b30);
+    background: var(--nc-close-hover-bg, rgba(0, 0, 0, 0.1));
+    opacity: 1;
+}
+
+.nc-toast-body {
+    padding: 12px 16px;
+    font-size: 13px;
+    color: var(--nc-text);
+    line-height: 1.4;
+}
+
+@keyframes slideInUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+
+/* Progress Bar for Toast */
+.nc-toast-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    width: 100%;
+    background: rgba(0, 0, 0, 0.05);
+    border-bottom-left-radius: var(--nc-radius, 12px);
+    border-bottom-right-radius: var(--nc-radius, 12px);
+    overflow: hidden;
+}
+
+.nc-toast-progress-bar {
+    height: 100%;
+    background: var(--nc-btn-bg, #007AFF);
+    /* Match button color */
+    width: 100%;
+    transform-origin: left;
+}
+
+/* ============================================
+   TOP BAR - Pasek nad headerem
+   ============================================ */
+.nc-topbar {
+    position: relative;
+    left: 0;
+    right: 0;
+    width: 100%;
+    z-index: 99997;
+    background: var(--nc-topbar-bg, #007AFF);
+    color: var(--nc-topbar-text, #ffffff);
+    min-height: 44px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Sticky mode - fixed at top */
+.nc-topbar.nc-topbar-sticky {
+    position: fixed;
+    top: 0;
+}
+
+/* Compact mode - container width with rounded corners */
+.nc-topbar.nc-topbar-compact {
+    width: calc(100% - 40px);
+    max-width: 1200px;
+    margin: 12px auto;
+    left: 0;
+    right: 0;
+    border-radius: var(--nc-radius, 12px);
+}
+
+/* Compact + Sticky combo */
+.nc-topbar.nc-topbar-compact.nc-topbar-sticky {
+    top: 12px;
+    left: 50%;
+    right: auto;
+    width: calc(100% - 40px);
+    transform: translateX(-50%);
+}
+
+/* Compact mode - ensure proper centering of inner content */
+.nc-topbar.nc-topbar-compact .nc-topbar-inner {
+    height: auto;
+    min-height: 44px;
+}
+
+.nc-topbar.nc-topbar-compact .nc-topbar-item {
+    height: auto;
+    min-height: 44px;
+    padding: 10px 60px;
+    flex-wrap: wrap;
+    align-content: center;
+    justify-content: center;
+}
+
+/* In compact mode, active item dictates height */
+.nc-topbar.nc-topbar-compact .nc-topbar-item.active {
+    position: relative;
+    transform: none;
+}
+
+/* Adjust inner container overflow */
+.nc-topbar.nc-topbar-compact .nc-topbar-inner {
+    height: auto;
+    min-height: 44px;
+    overflow: visible;
+}
+
+.nc-topbar-inner {
+    position: relative;
+    width: 100%;
+    height: 44px;
+    overflow: hidden;
+}
+
+.nc-topbar-item {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 44px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    padding: 0 60px;
+    opacity: 0;
+    transform: translateY(100%);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+}
+
+.nc-topbar-item.active {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.nc-topbar-item.exit {
+    opacity: 0;
+    transform: translateY(-100%);
+}
+
+.nc-topbar-title {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60%;
+}
+
+/* Compact mode title - allow wrapping */
+.nc-topbar.nc-topbar-compact .nc-topbar-title {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    max-width: 100%;
+    text-align: center;
+    line-height: 1.4;
+}
+
+.nc-topbar-btn {
+    display: inline-block;
+    background: var(--nc-topbar-btn-bg, #ffffff);
+    color: var(--nc-topbar-btn-text, #007AFF) !important;
+    padding: 6px 16px;
+    border-radius: var(--nc-item-radius, 8px);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.nc-topbar-btn:hover {
+    opacity: 0.9;
+    transform: scale(1.02);
+}
+
+.nc-topbar-close {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: inherit;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease;
+    z-index: 2;
+}
+
+.nc-topbar-close:hover {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+/* Pagination dots for multiple items */
+.nc-topbar-dots {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 6px;
+    z-index: 2;
+}
+
+.nc-topbar-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.4);
+    transition: background 0.3s ease;
+}
+
+.nc-topbar-dot.active {
+    background: rgba(255, 255, 255, 0.95);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .nc-topbar-item {
+        padding: 0 50px;
+        gap: 10px;
+    }
+
+    .nc-topbar-title {
+        font-size: 13px;
+        max-width: 50%;
+    }
+
+    .nc-topbar-btn {
+        padding: 5px 12px;
+        font-size: 11px;
+    }
+
+    .nc-topbar-close {
+        right: 10px;
+        width: 24px;
+        height: 24px;
+        font-size: 16px;
+    }
+
+    .nc-topbar-dots {
+        left: 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .nc-topbar-title {
+        max-width: 45%;
+    }
+
+    .nc-topbar-dots {
+        display: none;
+    }
+
+    .nc-topbar-item {
+        padding: 0 40px;
+    }
+}
+
+/* Mobile Optimization for Top Bar */
+@media (max-width: 768px) {
+
+    .nc-topbar,
+    .nc-topbar-inner {
+        height: auto !important;
+        min-height: 50px;
+    }
+
+    .nc-topbar-item {
+        padding: 10px 40px;
+        /* More padding for close/dots */
+        flex-wrap: wrap;
+        gap: 8px;
+        /* Disable absolute stacking on mobile to allow auto-height */
+        /* Only active item controls height */
+    }
+
+    /* Force active item to be relative to expand parent */
+    .nc-topbar-item.active {
+        position: relative;
+        height: auto;
+        opacity: 1;
+        transform: none;
+        display: flex;
+        /* Ensure flex flow */
+    }
+
+    /* Hide others completely to prevent overflow/overlap */
+    .nc-topbar-item:not(.active) {
+        display: none;
+        opacity: 0;
+    }
+
+    .nc-topbar-title {
+        white-space: normal;
+        max-width: 100%;
+        text-align: center;
+        width: 100%;
+        /* Force full width row */
+        line-height: 1.3;
+        font-size: 13px;
+        margin-bottom: 2px;
+    }
+
+    .nc-topbar-btn {
+        font-size: 11px;
+        padding: 5px 12px;
+        white-space: nowrap;
+    }
+
+    .nc-topbar .nc-countdown {
+        margin: 0;
+    }
+
+    /* Adjust dots position */
+    .nc-topbar-dots {
+        left: 10px;
+    }
+
+    .nc-topbar-close {
+        right: 10px;
+    }
+}
+
+/* ============================================
+   POPUP NOTIFICATION (MODAL)
+   ============================================ */
+.nc-popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 200000;
+    /* Higher than anything else */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    animation: ncFadeIn 0.3s forwards;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.nc-popup {
+    background: var(--nc-bg, #ffffff);
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    width: 400px;
+    max-width: 100%;
+    position: relative;
+    transform: scale(0.9);
+    animation: ncPopIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Dark mode adjustment if detected or configured */
+@media (prefers-color-scheme: dark) {
+    /* If variables aren't set, fallback */
+}
+
+.nc-popup-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--nc-border-color, rgba(0, 0, 0, 0.05));
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.nc-popup-header strong {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--nc-text);
+}
+
+.nc-popup-close {
+    background: var(--nc-close-bg, rgba(0, 0, 0, 0.05));
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--nc-close-color);
+    font-size: 20px;
+    transition: all 0.2s;
+    line-height: 1;
+}
+
+.nc-popup-close:hover {
+    background: var(--nc-close-hover-bg, rgba(0, 0, 0, 0.1));
+    color: var(--nc-close-hover-color, #ff3b30);
+}
+
+.nc-popup-body {
+    padding: 24px 24px 30px 24px;
+    text-align: center;
+    /* Center text for popups usually looks better, but could be left */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+.nc-popup-icon {
+    font-size: 48px;
+    margin-bottom: 10px;
+}
+
+.nc-popup-content {
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--nc-text-secondary);
+}
+
+.nc-popup-btn {
+    margin-top: 10px;
+    padding: 10px 24px;
+    font-size: 15px;
+    width: auto;
+    min-width: 120px;
+    text-align: center;
+}
+
+@keyframes ncFadeIn {
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes ncPopIn {
+    to {
+        transform: scale(1);
+    }
+}
+
+/* Close animation helper */
+.nc-popup-overlay.closing {
+    animation: ncFadeOut 0.3s forwards;
+}
+
+.nc-popup-overlay.closing .nc-popup {
+    animation: ncPopOut 0.3s forwards;
+}
+
+@keyframes ncFadeOut {
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes ncPopOut {
+    to {
+        transform: scale(0.9);
+        opacity: 0;
+    }
+}
+
+/* ============================================
+   UNIFIED FLOATING NOTIFICATIONS (New System)
+   ============================================ */
+
+/* Regions for stacking notifications (Toasts) */
+.nc-region {
+    position: fixed;
+    z-index: 99990;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 100%;
+    pointer-events: none;
+    /* Allow clicking through empty space */
+}
+
+.nc-region>* {
+    pointer-events: auto;
+}
+
+.nc-region-bottom-right {
+    bottom: 20px;
+    right: 20px;
+    align-items: flex-end;
+}
+
+.nc-region-top-right {
+    top: 20px;
+    right: 20px;
+    align-items: flex-end;
+}
+
+.nc-region-bottom-left {
+    bottom: 20px;
+    left: 20px;
+    align-items: flex-start;
+}
+
+.nc-region-top-left {
+    top: 20px;
+    left: 20px;
+    align-items: flex-start;
+}
+
+/* Offset top regions when Top Bar is visible */
+body.nc-topbar-active .nc-region-top-right,
+body.nc-topbar-active .nc-region-top-left {
+    top: 90px;
+    /* Top Bar height (~44px) + gap (20px) + original offset */
+}
+
+/* If Top Bar is sticky, floating notifications need more offset */
+body.nc-topbar-active.nc-has-sticky-topbar .nc-region-top-right,
+body.nc-topbar-active.nc-has-sticky-topbar .nc-region-top-left {
+    top: 90px;
+}
+
+/* Mobile: Full width, only top/bottom matters */
+@media (max-width: 480px) {
+    .nc-region {
+        left: 10px !important;
+        right: 10px !important;
+        width: auto;
+    }
+
+    .nc-region-bottom-right,
+    .nc-region-bottom-left {
+        bottom: 10px;
+        top: auto;
+        align-items: stretch;
+    }
+
+    .nc-region-top-right,
+    .nc-region-top-left {
+        top: 10px;
+        bottom: auto;
+        align-items: stretch;
+    }
+
+    /* Top Bar offset on mobile */
+    body.nc-topbar-active .nc-region-top-right,
+    body.nc-topbar-active .nc-region-top-left {
+        top: 60px;
+    }
+
+    .nc-floating {
+        width: 100% !important;
+        max-width: none;
+        box-sizing: border-box;
+    }
+}
+
+/* The Floating Item itself (Standard styling) */
+.nc-floating {
+    background: #fff;
+    color: #1d1d1f;
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    width: 320px;
+    max-width: 90vw;
+    font-size: 14px;
+    line-height: 1.5;
+    position: relative;
+    animation: ncSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.nc-floating-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.nc-floating-title {
+    font-weight: 600;
+    font-size: 15px;
+    margin-right: 20px;
+}
+
+/* Close button - hidden if permanent */
+.nc-floating-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(0, 0, 0, 0.08);
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    color: inherit;
+    opacity: 0.7;
+    padding: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.2s, background 0.2s;
+}
+
+.nc-floating-close:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.12);
+}
+
+.nc-floating.permanent .nc-floating-close {
+    display: none;
+}
+
+/* Animations */
+@keyframes ncSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* CENTER MODAL VARIANT (Reusing logic but specific class) */
+.nc-pos-center-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    animation: ncFadeIn 0.3s forwards;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.nc-floating.nc-pos-center {
+    width: 400px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    border-radius: 20px;
+    padding: 30px;
+    text-align: center;
+    animation: ncPopIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.nc-floating.nc-pos-center .nc-floating-header {
+    justify-content: center;
+    margin-bottom: 15px;
+}
+
+.nc-floating.nc-pos-center .nc-floating-title {
+    font-size: 18px;
+    margin-right: 0;
+}
+
+.nc-floating.nc-pos-center .nc-floating-close {
+    top: 15px;
+    right: 15px;
+    background: rgba(0, 0, 0, 0.05);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Sidebar Permanent */
+.nc-item.permanent .nc-dismiss {
+    display: none;
+}
+
+/* Topbar Permanent */
+.nc-topbar-item.permanent .nc-topbar-close {
+    display: none;
+}
