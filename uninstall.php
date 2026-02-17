@@ -29,3 +29,16 @@ $posts = get_posts( [
 foreach ( $posts as $post ) {
 	wp_delete_post( $post->ID, true );
 }
+
+// Drop tables
+global $wpdb;
+$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}nc_events" );
+$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}nc_user_notifications" );
+
+// Clear cron hooks
+wp_clear_scheduled_hook( 'nc_cleanup_old_events' );
+wp_clear_scheduled_hook( 'nc_abandoned_cart_check' );
+wp_clear_scheduled_hook( 'nc_user_notifications_cleanup' );
+
+// Clean up user meta from abandoned cart tracking
+$wpdb->query( "DELETE FROM {$wpdb->usermeta} WHERE meta_key = 'nc_cart_last_updated'" );

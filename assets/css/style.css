@@ -1480,3 +1480,159 @@ body.nc-topbar-active.nc-has-sticky-topbar .nc-region-top-left {
 .nc-topbar-item.permanent .nc-topbar-close {
     display: none;
 }
+
+/* ============================================
+   MOBILE RESPONSIVE & TOUCH TARGETS
+   ============================================ */
+@media (max-width: 768px) {
+    .nc-drawer {
+        width: 100% !important;
+        max-width: 100vw;
+        border-radius: 0;
+    }
+
+    .nc-floating {
+        left: 10px !important;
+        right: 10px !important;
+        width: auto !important;
+        max-width: calc(100vw - 20px);
+    }
+
+    .nc-pos-center-overlay .nc-floating {
+        margin: 10px;
+        width: calc(100% - 20px) !important;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .nc-topbar-inner {
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+
+    .nc-topbar-btn {
+        font-size: 12px;
+        padding: 4px 10px;
+    }
+
+    /* Larger touch targets (WCAG 2.5.5 - 44x44px minimum) */
+    .nc-dismiss,
+    .nc-floating-close,
+    .nc-topbar-close,
+    .nc-close-drawer {
+        min-width: 44px;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .nc-bell-container {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
+@media (max-width: 480px) {
+    .nc-floating {
+        left: 5px !important;
+        right: 5px !important;
+    }
+
+    .nc-item-icon {
+        display: none;
+    }
+}
+
+/* ============================================
+   USER (WooCommerce) NOTIFICATIONS
+   ============================================ */
+:root {
+    --nc-user-bg: #f0f7ff;
+}
+
+.nc-item-user {
+    background: var(--nc-user-bg) !important;
+    border-left: 3px solid var(--nc-primary, #007AFF);
+}
+
+.nc-item-user.read {
+    border-left-color: var(--nc-border, #e5e5e5);
+}
+
+.nc-user-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(0, 122, 255, 0.1);
+    color: var(--nc-primary, #007AFF);
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+/* CTA buttons inside floating notifications - ensure touch targets on mobile */
+@media (max-width: 768px) {
+    .nc-floating-btn,
+    .nc-floating .nc-btn,
+    .nc-item-user .nc-btn {
+        min-height: 44px;
+        min-width: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 16px;
+        font-size: 14px;
+    }
+
+    /* Ensure drawer content is scrollable on mobile */
+    .nc-drawer-content {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+    }
+
+    /* Badge visibility on small screens */
+    .nc-badge {
+        font-size: 8px;
+        min-width: 14px;
+        height: 14px;
+        width: auto;
+        padding: 0 3px;
+    }
+}
+
+@media (max-width: 480px) {
+    /* User notification badge - compact on very small screens */
+    .nc-user-badge {
+        font-size: 8px;
+        padding: 1px 4px;
+    }
+}
+
+@media (max-width: 320px) {
+    /* Extra small: prevent topbar text cutoff */
+    .nc-topbar-title {
+        font-size: 12px;
+        max-width: 100%;
+        white-space: normal;
+        line-height: 1.3;
+    }
+
+    .nc-topbar-item {
+        padding: 8px 35px;
+        gap: 6px;
+    }
+
+    .nc-topbar-btn {
+        font-size: 10px;
+        padding: 4px 8px;
+    }
+
+    /* Drawer header compact */
+    .nc-drawer-header h3 {
+        font-size: 16px;
+    }
+}

@@ -12,6 +12,9 @@ class NC_Settings {
 		
 		// Invalidate options cache when any nc_ option is updated
 		add_action( 'update_option', [ $this, 'maybe_invalidate_cache' ], 10, 1 );
+
+		// Invalidate notification caches when a notification is saved
+		add_action( 'save_post_nc_notification', [ $this, 'invalidate_notification_caches' ] );
 	}
 	
 	/**
@@ -19,8 +22,16 @@ class NC_Settings {
 	 */
 	public function maybe_invalidate_cache( $option_name ) {
 		if ( strpos( $option_name, 'nc_' ) === 0 ) {
-			wp_cache_delete( 'nc_all_options', 'notification_centre' );
+			delete_transient( 'nc_all_options' );
 		}
+	}
+
+	/**
+	 * Invalidate all notification-related caches when a notification is saved
+	 */
+	public function invalidate_notification_caches() {
+		delete_transient( 'nc_fluentform_ids' );
+		update_option( 'nc_cache_version', time(), false );
 	}
 
 	public function add_settings_page() {
@@ -57,8 +68,12 @@ class NC_Settings {
 		
 		// Checkbox/Boolean fields - sanitize as 0/1
 		$bool_settings = [
-			'nc_enable_sound', 'nc_disable_topbar', 'nc_topbar_dismissible', 
-			'nc_topbar_sticky', 'nc_countdown_show_units', 'nc_debug_mode'
+			'nc_enable_sound', 'nc_disable_topbar', 'nc_topbar_dismissible',
+			'nc_topbar_sticky', 'nc_countdown_show_units', 'nc_debug_mode',
+			// WooCommerce notification toggles
+			'nc_woo_enabled', 'nc_woo_order_processing', 'nc_woo_order_completed',
+			'nc_woo_order_on_hold', 'nc_woo_order_refunded', 'nc_woo_order_cancelled',
+			'nc_woo_order_new', 'nc_woo_abandoned_cart', 'nc_woo_push_enabled',
 		];
 		
 		foreach ( $bool_settings as $setting ) {
@@ -74,6 +89,12 @@ class NC_Settings {
 			'type' => 'integer',
 			'sanitize_callback' => 'absint',
 			'default' => 5
+		]);
+
+		register_setting( 'nc_settings_group', 'nc_woo_abandoned_cart_delay', [
+			'type' => 'integer',
+			'sanitize_callback' => 'absint',
+			'default' => 60
 		]);
 	}
 	
@@ -404,6 +425,123 @@ class NC_Settings {
                         </td>
                     </tr>
 				</table>
+
+                <?php if ( class_exists( 'WooCommerce' ) ) : ?>
+                <h2>🛒 Powiadomienia WooCommerce</h2>
+                <p class="description">Automatyczne powiadomienia per-user o zamówieniach i porzuconym koszyku. Wyświetlane w dzwonku i jako floating popup dla zalogowanych klientów.</p>
+
+                <table class="form-table">
+                    <tr valign="top">
+                        <th scope="row">Włącz powiadomienia WooCommerce</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="nc_woo_enabled" value="1" <?php checked( get_option( 'nc_woo_enabled', '1' ), '1' ); ?>>
+                                Globalnie włącz/wyłącz powiadomienia WooCommerce
+                            </label>
+                        </td>
+                    </tr>
+                </table>
+
+                <h3>📦 Powiadomienia o zamówieniach</h3>
+                <table class="form-table">
+                    <tr valign="top">
+                        <th scope="row">Nowe zamówienie</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="nc_woo_order_new" value="1" <?php checked( get_option( 'nc_woo_order_new', '1' ), '1' ); ?>>
+                                "Dziękujemy! Zamówienie #X zostało przyjęte"
+                            </label>
+                        </td>
+                    </tr>
+                    <tr valign="top">
+                        <th scope="row">W realizacji (processing)</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="nc_woo_order_processing" value="1" <?php checked( get_option( 'nc_woo_order_processing', '1' ), '1' ); ?>>
+                                "Zamówienie #X jest w realizacji"
+                            </label>
+                        </td>
+                    </tr>
+                    <tr valign="top">
+                        <th scope="row">Zrealizowane (completed)</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="nc_woo_order_completed" value="1" <?php checked( get_option( 'nc_woo_order_completed', '1' ), '1' ); ?>>
+                                "Zamówienie #X zostało zrealizowane!"
+                            </label>
+                        </td>
+                    </tr>
+                    <tr valign="top">
+                        <th scope="row">Oczekuje na płatność (on-hold)</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="nc_woo_order_on_hold" value="1" <?php checked( get_option( 'nc_woo_order_on_hold', '1' ), '1' ); ?>>
+                                "Zamówienie #X oczekuje na płatność"
+                            </label>
+                        </td>
+                    </tr>
+                    <tr valign="top">
+                        <th scope="row">Zwrot (refunded)</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="nc_woo_order_refunded" value="1" <?php checked( get_option( 'nc_woo_order_refunded', '1' ), '1' ); ?>>
+                                "Zwrot za zamówienie #X został przetworzony"
+                            </label>
+                        </td>
+                    </tr>
+                    <tr valign="top">
+                        <th scope="row">Anulowane (cancelled)</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="nc_woo_order_cancelled" value="1" <?php checked( get_option( 'nc_woo_order_cancelled', '1' ), '1' ); ?>>
+                                "Zamówienie #X zostało anulowane"
+                            </label>
+                        </td>
+                    </tr>
+                </table>
+
+                <h3>🛒 Porzucony koszyk</h3>
+                <table class="form-table">
+                    <tr valign="top">
+                        <th scope="row">Powiadomienie o porzuconym koszyku</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="nc_woo_abandoned_cart" value="1" <?php checked( get_option( 'nc_woo_abandoned_cart', '1' ), '1' ); ?>>
+                                "Masz produkty w koszyku! Dokończ zakupy."
+                            </label>
+                            <p class="description">Wysyłane gdy zalogowany użytkownik ma produkty w koszyku i nie dokończył zakupu.</p>
+                        </td>
+                    </tr>
+                    <tr valign="top">
+                        <th scope="row">Opóźnienie (minuty)</th>
+                        <td>
+                            <input type="number" name="nc_woo_abandoned_cart_delay" value="<?php echo esc_attr( get_option( 'nc_woo_abandoned_cart_delay', '60' ) ); ?>" class="small-text" min="15" max="1440"> min
+                            <p class="description">Czas od ostatniej aktywności w koszyku do wysłania powiadomienia. Domyślnie 60 minut. Max 1 powiadomienie na 24h per użytkownik.</p>
+                        </td>
+                    </tr>
+                </table>
+
+                <h3>📱 Push (OneSignal)</h3>
+                <table class="form-table">
+                    <tr valign="top">
+                        <th scope="row">Push przy nowym powiadomieniu</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="nc_woo_push_enabled" value="1" <?php checked( get_option( 'nc_woo_push_enabled', '' ), '1' ); ?>>
+                                Wysyłaj push notification przez OneSignal
+                            </label>
+                            <?php
+                            $os_settings = get_option( 'OneSignalWPSetting' );
+                            if ( ! $os_settings || empty( $os_settings['app_id'] ) ) :
+                            ?>
+                                <p class="description" style="color: #d63638;">⚠️ OneSignal nie jest skonfigurowany. Zainstaluj i skonfiguruj plugin OneSignal, aby push działał.</p>
+                            <?php else : ?>
+                                <p class="description" style="color: #00a32a;">✅ OneSignal wykryty (App ID: <?php echo esc_html( substr( $os_settings['app_id'], 0, 8 ) . '...' ); ?>)</p>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                </table>
+                <?php endif; ?>
 
                 <h2>🛠️ Rozwiązywanie problemów (Debug)</h2>
                 <p class="description">Narzędzia pomocne przy diagnozowaniu problemów z wyświetlaniem powiadomień.</p>

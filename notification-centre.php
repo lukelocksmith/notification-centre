@@ -3,8 +3,8 @@
  * Plugin Name: Notification Centre
  * Plugin URI:  https://agencyjnie.pl
  * Description: Advanced on-site notification center with OneSignal integration.
- * Version:     1.0.5
- * Author:      Agencyjnie
+ * Version:     1.2.0
+ * Author:      important.is
  * Text Domain: notification-centre
  */
 
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define Constants
-define( 'NC_VERSION', '1.0.5' );
+define( 'NC_VERSION', '1.2.0' );
 define( 'NC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -45,13 +45,22 @@ class Notification_Centre {
         require_once NC_PLUGIN_DIR . 'includes/class-nc-onesignal.php';
         require_once NC_PLUGIN_DIR . 'includes/class-nc-settings.php';
         require_once NC_PLUGIN_DIR . 'includes/class-nc-github-updater.php';
+        require_once NC_PLUGIN_DIR . 'includes/class-nc-analytics.php';
+        require_once NC_PLUGIN_DIR . 'includes/class-nc-woo-notifications.php';
 	}
 
 	private function hooks() {
 		add_action( 'plugins_loaded', [ $this, 'init' ] );
 		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_assets' ] );
 		add_shortcode( 'notification_center', [ $this, 'render_shortcode' ] );
-        add_filter( 'wp_nav_menu_items', 'do_shortcode' );
+        add_filter( 'wp_nav_menu_items', function( $items ) {
+            if ( strpos( $items, '[notification_center' ) !== false ) {
+                $items = preg_replace_callback( '/\[notification_center[^\]]*\]/', function( $match ) {
+                    return do_shortcode( $match[0] );
+                }, $items );
+            }
+            return $items;
+        } );
         
         // Render drawer in footer to avoid wpautop adding <p> tags
         add_action( 'wp_footer', [ $this, 'render_drawer_in_footer' ] );
@@ -66,15 +75,30 @@ class Notification_Centre {
 
         // Check for Fluent Forms in active notifications and enqueue necessary assets
         if ( function_exists( 'fluentFormMix' ) ) {
-            $active_notifications = new WP_Query( [
-                'post_type' => 'nc_notification',
-                'post_status' => 'publish',
-                'posts_per_page' => -1,
-                's' => '[fluentform' // Efficiently filter posts containing the shortcode
-            ] );
+            // Cache form IDs from notifications (avoids WP_Query search on every page load)
+            $form_ids = get_transient( 'nc_fluentform_ids' );
+            if ( $form_ids === false ) {
+                $ff_query = new WP_Query( [
+                    'post_type' => 'nc_notification',
+                    'post_status' => 'publish',
+                    'posts_per_page' => -1,
+                    's' => '[fluentform'
+                ] );
+                $form_ids = [];
+                while ( $ff_query->have_posts() ) {
+                    $ff_query->the_post();
+                    $content = get_the_content();
+                    if ( preg_match_all( '/\[fluentform\s+[^\]]*id=["\']?(\d+)["\']?[^\]]*\]/i', $content, $matches ) ) {
+                        $form_ids = array_merge( $form_ids, $matches[1] );
+                    }
+                }
+                wp_reset_postdata();
+                $form_ids = array_unique( $form_ids );
+                set_transient( 'nc_fluentform_ids', $form_ids, HOUR_IN_SECONDS );
+            }
 
-            if ( $active_notifications->have_posts() ) {
-                // Enqueue Fluent Forms main scripts  
+            if ( ! empty( $form_ids ) ) {
+                // Enqueue Fluent Forms main scripts
                 wp_enqueue_style( 'fluent-form-styles', fluentFormMix( 'css/fluent-forms-public.css' ), [], FLUENTFORM_VERSION );
                 wp_enqueue_style( 'fluentform-public-default', fluentFormMix( 'css/fluentform-public-default.css' ), [], FLUENTFORM_VERSION );
                 wp_enqueue_script( 'fluent-form-submission', fluentFormMix( 'js/form-submission.js' ), [ 'jquery' ], FLUENTFORM_VERSION, true );
@@ -95,37 +119,23 @@ class Notification_Centre {
                     wp_localize_script( 'fluent-form-submission', 'fluentFormVars', $fluent_vars );
                 }
 
-                // Now extract form IDs and add inline form-specific config
-                while ( $active_notifications->have_posts() ) {
-                    $active_notifications->the_post();
-                    $content = get_the_content();
-                    
-                    // Find all fluentform shortcodes and extract form IDs
-                    if ( preg_match_all( '/\[fluentform\s+[^\]]*id=["\']?(\d+)["\']?[^\]]*\]/i', $content, $matches ) ) {
-                        foreach ( $matches[1] as $form_id ) {
-                            // Get form data
-                            $form = wpFluent()->table( 'fluentform_forms' )->where( 'id', $form_id )->first();
-                            if ( ! $form ) continue;
+                // Add inline form-specific config for each discovered form
+                foreach ( $form_ids as $form_id ) {
+                    $form = wpFluent()->table( 'fluentform_forms' )->where( 'id', $form_id )->first();
+                    if ( ! $form ) continue;
 
-                            // Add inline script with generic form variables (to be mapped in JS)
-                            // We use a generic name because the instance ID (ff_form_instance_X_Y) is generated randomly/dynamically
-                            // and we cannot predict it perfectly here. JS will map it.
-                            $generic_var_name = 'fluent_form_model_' . $form_id;
-                            
-                            $form_vars = [
-                                'id' => $form_id,
-                                'settings' => [ 'layout' => [] ],
-                                'form_instance' => '', // Will be filled by JS
-                                'form_id_selector' => 'fluentform_' . $form_id,
-                                'rules' => [],
-                            ];
+                    $generic_var_name = 'fluent_form_model_' . $form_id;
+                    $form_vars = [
+                        'id' => $form_id,
+                        'settings' => [ 'layout' => [] ],
+                        'form_instance' => '',
+                        'form_id_selector' => 'fluentform_' . $form_id,
+                        'rules' => [],
+                    ];
 
-                            $inline_script = 'window.' . $generic_var_name . ' = ' . wp_json_encode( $form_vars ) . ';';
-                            wp_add_inline_script( 'fluent-form-submission', $inline_script );
-                        }
-                    }
+                    $inline_script = 'window.' . $generic_var_name . ' = ' . wp_json_encode( $form_vars ) . ';';
+                    wp_add_inline_script( 'fluent-form-submission', $inline_script );
                 }
-                wp_reset_postdata();
             }
         }
         
@@ -256,10 +266,15 @@ class Notification_Centre {
                 'btnBg' => $nc_topbar_btn_bg,
                 'btnText' => $nc_topbar_btn_text,
             ],
+            'cacheVersion' => get_option('nc_cache_version', '0'),
             'debugMode' => $options['nc_debug_mode'] === '1',
+            'timezone' => wp_timezone_string(),
+            'serverTime' => time() * 1000,
             'countdown' => [
                 'showUnits' => ($options['nc_countdown_show_units'] ?: '1') === '1',
             ],
+            'userNotificationsEndpoint' => rest_url( 'nc/v1/user-notifications' ),
+            'hasWooCommerce' => class_exists( 'WooCommerce' ),
 		] );
 	}
     
@@ -268,8 +283,8 @@ class Notification_Centre {
      */
     private function get_cached_options() {
         $cache_key = 'nc_all_options';
-        $options = wp_cache_get( $cache_key, 'notification_centre' );
-        
+        $options = get_transient( $cache_key );
+
         if ( $options === false ) {
             global $wpdb;
             
@@ -284,8 +299,7 @@ class Notification_Centre {
                 $options[ $row->option_name ] = $row->option_value;
             }
             
-            // Cache for 1 hour (options don't change often)
-            wp_cache_set( $cache_key, $options, 'notification_centre', HOUR_IN_SECONDS );
+            set_transient( $cache_key, $options, HOUR_IN_SECONDS );
         }
         
         return $options;
@@ -297,7 +311,13 @@ class Notification_Centre {
 		new NC_Rest_Api();
         new NC_OneSignal_Integration();
         new NC_Settings();
-        
+        new NC_Analytics();
+
+        // WooCommerce per-user notifications (only if WooCommerce is active)
+        if ( class_exists( 'WooCommerce' ) ) {
+            new NC_Woo_Notifications();
+        }
+
         // Admin assets
         add_action('admin_enqueue_scripts', function() {
              wp_enqueue_media();
@@ -323,7 +343,7 @@ class Notification_Centre {
         
         // Render bell icon only - drawer is added via wp_footer
 		ob_start();
-		?><div id="nc-bell-container" class="nc-bell-container"><div class="nc-bell-icon"><?php echo $bell_svg; ?><span class="nc-badge" style="display:none"></span></div></div><?php
+		?><div id="nc-bell-container" class="nc-bell-container" role="button" aria-label="Otwórz powiadomienia" tabindex="0" aria-expanded="false"><div class="nc-bell-icon"><?php echo $bell_svg; ?><span class="nc-badge" style="display:none"></span></div></div><?php
 		return ob_get_clean();
 	}
     
@@ -332,13 +352,13 @@ class Notification_Centre {
      */
     public function render_drawer_in_footer() {
         ?>
-        <div id="nc-drawer" class="nc-drawer">
-            <div class="nc-drawer-header"><h3>Powiadomienia</h3><button class="nc-close-drawer">&times;</button></div>
+        <div id="nc-drawer" class="nc-drawer" role="dialog" aria-modal="true" aria-label="Panel powiadomień">
+            <div class="nc-drawer-header"><h3>Powiadomienia</h3><button class="nc-close-drawer" aria-label="Zamknij">&times;</button></div>
             <div class="nc-drawer-content"><div id="nc-notification-list"></div></div>
             <div class="nc-drawer-footer"><button id="nc-mark-all-read">Oznacz wszystkie jako przeczytane</button></div>
         </div>
         <div id="nc-overlay" class="nc-overlay"></div>
-        <div id="nc-toast-container" class="nc-toast-container"></div>
+        <div id="nc-toast-container" class="nc-toast-container" aria-live="polite" role="status"></div>
         <?php
 	}
     
@@ -347,9 +367,13 @@ class Notification_Centre {
      */
     public function render_topbar() {
         ?>
-        <div id="nc-topbar" class="nc-topbar" style="display:none;"></div>
+        <div id="nc-topbar" class="nc-topbar" role="banner" aria-label="Ogłoszenie" style="display:none;"></div>
         <?php
     }
 }
 
 Notification_Centre::get_instance();
+
+// Create tables on activation
+register_activation_hook( __FILE__, [ 'NC_Analytics', 'create_table' ] );
+register_activation_hook( __FILE__, [ 'NC_Woo_Notifications', 'create_table' ] );

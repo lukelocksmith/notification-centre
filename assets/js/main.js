@@ -15,17 +15,109 @@
         }
     };
 
+    // Safe localStorage wrapper (falls back to in-memory if localStorage unavailable)
+    const memoryStore = {};
+    function storageGet(key, fallback) {
+        try {
+            const val = localStorage.getItem(key);
+            return val !== null ? JSON.parse(val) : fallback;
+        } catch {
+            return memoryStore[key] || fallback;
+        }
+    }
+    function storageSet(key, value) {
+        try {
+            localStorage.setItem(key, JSON.stringify(value));
+        } catch {
+            memoryStore[key] = value;
+        }
+    }
+
+    // Dismissal check helper - returns true if item is currently dismissed
+    function isDismissed(id, store, repeatVal, repeatUnit) {
+        let dismissedAt = 0;
+        if (Array.isArray(store)) {
+            if (store.includes(id)) dismissedAt = Date.now();
+        } else {
+            dismissedAt = store[id] || 0;
+        }
+        if (!dismissedAt) return false;
+        if (repeatVal > 0) {
+            let multiplier = 1000 * 60; // minutes
+            if (repeatUnit === 'hours') multiplier *= 60;
+            if (repeatUnit === 'days') multiplier *= 60 * 24;
+            return Date.now() < dismissedAt + (repeatVal * multiplier);
+        }
+        return true; // No repeat = dismissed forever
+    }
+
+    // Unified icon renderer
+    function renderIcon(icon, size) {
+        if (typeof size === 'undefined') size = 40;
+        if (!icon) return '';
+        var borderRadius = size > 40 ? 8 : 6;
+        var fontSize = size > 40 ? 40 : 32;
+        if (icon.indexOf('.') > -1 || icon.indexOf('/') > -1) {
+            return '<img src="' + icon + '" class="nc-icon-img" style="width:' + size + 'px; height:' + size + 'px; border-radius:' + borderRadius + 'px; object-fit:cover; display:block;" alt="">';
+        }
+        if (icon.startsWith('dashicons-')) return '<span class="dashicons ' + icon + '" style="font-size:' + fontSize + 'px; width:' + size + 'px; height:' + size + 'px; line-height:' + size + 'px; text-align:center;"></span>';
+        return '<span style="font-size:' + fontSize + 'px; width:' + size + 'px; height:' + size + 'px; line-height:' + size + 'px; text-align:center; display:block;">' + icon + '</span>';
+    }
+
+    // Server-client time offset for accurate countdowns
+    const serverTimeOffset = ncData.serverTime ? (ncData.serverTime * 1000 - Date.now()) : 0;
+    function getServerNow() { return Date.now() + serverTimeOffset; }
+
     // State
     let notifications = [];
-    const readIds = JSON.parse(localStorage.getItem('nc_read_ids') || '[]');
-    let dismissedIds = JSON.parse(localStorage.getItem('nc_dismissed_ids') || '{}'); // Off-Canvas
-    let dismissedToastIds = JSON.parse(localStorage.getItem('nc_dismissed_toast_ids') || '{}'); // Toast only
-    let shownSessionIds = []; // Track what we showed this session to prevent re-show on re-render
+    let userNotifications = []; // Per-user WooCommerce notifications (from custom table)
+    const readIds = storageGet('nc_read_ids', []);
+    let dismissedIds = storageGet('nc_dismissed_ids', {}); // Off-Canvas
+    let dismissedToastIds = storageGet('nc_dismissed_toast_ids', {}); // Toast only
+    const topBarDismissedKey = 'nc_topbar_dismissed';
+    // Track what we showed this session - use sessionStorage so it survives page reloads
+    // Includes cache version check so admin changes reset the list
+    let shownSessionIds = [];
+    try {
+        const storedSession = JSON.parse(sessionStorage.getItem('nc_shown_session') || '{}');
+        const cacheVer = ncData.cacheVersion || '0';
+        if (storedSession.v === cacheVer && Array.isArray(storedSession.ids)) {
+            shownSessionIds = storedSession.ids;
+        }
+    } catch { /* ignore */ }
+    function saveShownSession() {
+        try {
+            sessionStorage.setItem('nc_shown_session', JSON.stringify({
+                v: ncData.cacheVersion || '0',
+                ids: shownSessionIds
+            }));
+        } catch { /* ignore */ }
+    }
 
     // Queue System: GLOBAL - only ONE floating notification at a time
     // Priority: center (popup) > top positions > bottom positions
     let floatingQueue = []; // Single global queue
     let activeFloatingId = null; // Currently shown notification ID
+
+    // Unified dismissal - syncs across ALL stores (sidebar, floating, topbar)
+    function dismissEverywhere(id) {
+        const now = Date.now();
+        // Floating/toast store
+        dismissedToastIds[id] = now;
+        storageSet('nc_dismissed_toast_ids', dismissedToastIds);
+        // Sidebar store
+        dismissedIds[id] = now;
+        storageSet('nc_dismissed_ids', dismissedIds);
+        // TopBar store
+        const tbDismissed = getTopBarDismissed();
+        tbDismissed[id] = now;
+        storageSet(topBarDismissedKey, tbDismissed);
+        // Session tracking
+        if (!shownSessionIds.includes(id)) {
+            shownSessionIds.push(id);
+            saveShownSession();
+        }
+    }
 
     // Behavioral Trigger System
     let triggerNotifications = []; // Notifications waiting for triggers
@@ -34,13 +126,35 @@
     let pageLoadTime = Date.now(); // For time on page tracking
     let scrollDepthReached = 0; // Maximum scroll depth reached
     let triggerListenersInitialized = false;
+    let triggerCheckInterval = null; // Reference to stop interval when all triggers done
+
+    // Analytics tracking (fire-and-forget)
+    function trackEvent(notificationId, eventType) {
+        if (!notificationId) return;
+        var body = JSON.stringify({
+            notification_id: notificationId,
+            event_type: eventType,
+            page_url: window.location.href
+        });
+        if (navigator.sendBeacon) {
+            var blob = new Blob([body], { type: 'application/json' });
+            navigator.sendBeacon(apiRoot + 'events', blob);
+        } else {
+            fetch(apiRoot + 'events', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': ncData.nonce },
+                body: body,
+                keepalive: true
+            }).catch(function() {});
+        }
+    }
 
     // Legacy migration: if it was array, convert to object
     if (Array.isArray(dismissedIds)) {
         let newStore = {};
         dismissedIds.forEach(id => newStore[id] = Date.now());
         dismissedIds = newStore;
-        localStorage.setItem('nc_dismissed_ids', JSON.stringify(dismissedIds));
+        storageSet('nc_dismissed_ids', dismissedIds);
     }
 
     // Init
@@ -242,11 +356,39 @@
             });
         };
 
+        // Keyboard: Enter/Space on bell opens drawer
+        if (bellContainer) {
+            bellContainer.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleDrawer(e);
+                }
+            });
+        }
+
+        // Escape key closes drawer/floating
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (drawer && drawer.classList.contains('open')) toggleDrawer(e);
+                if (activeFloatingId) closeFloating(activeFloatingId, !!document.querySelector('.nc-pos-center-overlay[data-id="' + activeFloatingId + '"]'));
+            }
+        });
+
         if (markAllReadBtn) {
             markAllReadBtn.addEventListener('click', markAllAsRead);
         }
 
         fetchNotifications();
+
+        // CTA click tracking (delegated)
+        document.addEventListener('click', function(e) {
+            var ctaBtn = e.target.closest('.nc-btn, .nc-floating-btn, .nc-topbar-btn');
+            if (!ctaBtn) return;
+            var container = ctaBtn.closest('[data-id]');
+            if (container && container.dataset.id) {
+                trackEvent(container.dataset.id, 'cta_click');
+            }
+        });
     }
 
     function fetchNotifications() {
@@ -256,12 +398,33 @@
             pid: getPostId() // helper needed
         });
 
-        fetch(apiRoot + 'notifications?' + params.toString())
-            .then(res => res.json())
-            .then(data => {
-                ncLog('NC: Fetched ' + data.length + ' notifications', data);
+        // Fetch CPT notifications
+        const cptPromise = fetch(apiRoot + 'notifications?' + params.toString())
+            .then(res => res.json());
+
+        // Fetch user notifications if logged in
+        const userPromise = (ncData.userId > 0)
+            ? fetch(apiRoot + 'user-notifications', {
+                headers: { 'X-WP-Nonce': ncData.nonce }
+            }).then(res => res.json()).catch(() => [])
+            : Promise.resolve([]);
+
+        Promise.all([cptPromise, userPromise])
+            .then(([cptData, userData]) => {
+                ncLog('NC: Fetched ' + cptData.length + ' CPT + ' + userData.length + ' user notifications');
+
+                // Store user notifications separately for API-based dismiss/read
+                userNotifications = userData;
+
                 // Normalize data structure for backward compatibility
-                notifications = data.map(n => {
+                // Prune stale readIds (keep only IDs that exist in current data)
+                const currentIds = new Set(cptData.map(n => n.id));
+                for (let i = readIds.length - 1; i >= 0; i--) {
+                    if (!currentIds.has(readIds[i])) readIds.splice(i, 1);
+                }
+                storageSet('nc_read_ids', readIds);
+
+                const normalizedCpt = cptData.map(n => {
                     const s = n.settings;
 
                     // Floating Normalization
@@ -295,6 +458,11 @@
                     return n;
                 });
 
+                // Merge: pinned CPT first, then user notifications, then remaining CPT
+                const pinned = normalizedCpt.filter(n => n.settings.sidebar_pinned || n.settings.pinned);
+                const nonPinned = normalizedCpt.filter(n => !(n.settings.sidebar_pinned || n.settings.pinned));
+                notifications = [...pinned, ...userData, ...nonPinned];
+
                 renderAll();
             })
             .catch(err => console.error('NC Error:', err));
@@ -316,28 +484,7 @@
             if (n.settings.show_in_sidebar !== '1') return false;
 
             // Dismissal Check (Sidebar History)
-            let dismissedAt = 0;
-            if (Array.isArray(dismissedIds)) {
-                if (dismissedIds.includes(n.id)) dismissedAt = Date.now();
-            } else {
-                dismissedAt = dismissedIds[n.id] || 0;
-            }
-
-            if (!dismissedAt) return true; // Not dismissed yet
-
-            // Repeat Policy
-            if (n.settings.repeat_val > 0) {
-                let multiplier = 1000 * 60; // minutes
-                if (n.settings.repeat_unit === 'hours') multiplier *= 60;
-                if (n.settings.repeat_unit === 'days') multiplier *= 60 * 24;
-
-                const showAfter = dismissedAt + (n.settings.repeat_val * multiplier);
-                if (Date.now() > showAfter) {
-                    return true;
-                }
-            }
-
-            return false; // Still dismissed
+            return !isDismissed(n.id, dismissedIds, n.settings.repeat_val, n.settings.repeat_unit);
         });
 
         if (validItems.length === 0) {
@@ -346,9 +493,11 @@
         }
 
         validItems.forEach(n => {
-            const isRead = readIds.includes(n.id);
+            const isUserNotif = n.type === 'user';
+            const isRead = isUserNotif ? !!n.is_read : readIds.includes(n.id);
             const el = document.createElement('div');
-            el.className = `nc-item ${isRead ? 'read' : 'unread'}`;
+            el.className = `nc-item ${isRead ? 'read' : 'unread'}${isUserNotif ? ' nc-item-user' : ''}`;
+            el.dataset.id = n.id;
 
             // Text truncation logic
             let bodyHtml = `<div class="nc-content line-clamp">${n.body}</div>`;
@@ -374,19 +523,15 @@
             const itemStyle = `background-color:${bg}; color:${text};`;
             const btnStyle = `background-color:${btnBg}; color:${btnText};`;
 
-            el.style.cssText = itemStyle;
+            // Don't override user notification background with inline style
+            if (!isUserNotif) el.style.cssText = itemStyle;
+            else el.style.color = text;
 
-            const renderIcon = (icon) => {
-                if (!icon) return '';
-                // Check if image URL (contains . or /)
-                if (icon.indexOf('.') > -1 || icon.indexOf('/') > -1) {
-                    return `<img src="${icon}" class="nc-icon-img" style="width:60px; height:60px; border-radius:8px; object-fit:cover; display:block;" alt="">`;
-                }
-                if (icon.startsWith('dashicons-')) return `<span class="dashicons ${icon}" style="font-size:40px; width:60px; height:60px; line-height:60px; text-align:center;"></span>`;
-                return `<span style="font-size:40px; width:60px; height:60px; line-height:60px; text-align:center; display:block;">${icon}</span>`;
-            };
+            const iconHtml = n.icon ? `<div class="nc-item-icon" style="flex-shrink:0; margin-right:15px;">${renderIcon(n.icon, 60)}</div>` : '';
 
-            const iconHtml = n.icon ? `<div class="nc-item-icon" style="flex-shrink:0; margin-right:15px;">${renderIcon(n.icon)}</div>` : '';
+            // Category badge for user notifications (data comes from our own API, safe for innerHTML)
+            const userBadgeLabel = isUserNotif ? (String(n.id).indexOf('abandoned') > -1 ? 'Koszyk' : 'Zamówienie') : '';
+            const userBadgeHtml = isUserNotif ? '<span class="nc-user-badge">' + userBadgeLabel + '</span>' : '';
 
             el.innerHTML = `
                 <div class="nc-item-inner" style="display:flex; align-items:flex-start;">
@@ -394,6 +539,7 @@
                     <div class="nc-item-content" style="flex-grow:1;">
                         <div class="nc-item-header">
                             <div style="display:flex; align-items:center;">
+                                ${userBadgeHtml}
                                 ${n.settings.sidebar_pinned ? '<span title="Przypięte" style="margin-right:5px;">📌</span> ' : ''}
                                 <span class="nc-date" title="${n.date}">${timeAgo(n.date)}</span>
                             </div>
@@ -415,7 +561,11 @@
             if (dismissBtn) {
                 dismissBtn.addEventListener('click', (e) => {
                     e.stopPropagation(); // prevent triggering item click
-                    dismissItem(n.id);
+                    if (isUserNotif) {
+                        dismissUserNotification(n.id);
+                    } else {
+                        dismissItem(n.id);
+                    }
                 });
             }
 
@@ -432,11 +582,18 @@
             // Click on item -> mark read
             el.addEventListener('click', () => {
                 if (!isRead) {
-                    markAsRead(n.id);
+                    if (isUserNotif) {
+                        markUserNotificationRead(n.id);
+                    } else {
+                        markAsRead(n.id);
+                    }
                 }
             });
 
             listContainer.appendChild(el);
+
+            // Track view for unread items
+            if (!isRead) trackEvent(n.id, 'view');
 
             // Init Fluent Forms in this item if present
             if (typeof window.ncInitFluentForms === 'function') {
@@ -456,22 +613,14 @@
             // If pinned, we might count them. Copied logic from renderList
             if (n.settings.popup && !n.settings.pinned) return false;
 
+            // User notifications: use server-side is_read flag
+            if (n.type === 'user') return !n.is_read;
+
             if (readIds.includes(n.id)) return false;
 
-            // Check dismissal
-            let dismissedAt = dismissedIds[n.id] || 0;
-            if (dismissedAt) {
-                if (n.settings.repeat_val > 0) {
-                    let multiplier = 1000 * 60; // minutes
-                    if (n.settings.repeat_unit === 'hours') multiplier *= 60;
-                    if (n.settings.repeat_unit === 'days') multiplier *= 60 * 24;
-                    if (Date.now() < dismissedAt + (n.settings.repeat_val * multiplier)) {
-                        return false;
-                    }
-                } else {
-                    return false;
-                }
-            }
+            // Check dismissal (both stores)
+            if (isDismissed(n.id, dismissedIds, n.settings.repeat_val, n.settings.repeat_unit)) return false;
+            if (isDismissed(n.id, dismissedToastIds, n.settings.repeat_val, n.settings.repeat_unit)) return false;
             return true;
         }).length;
 
@@ -523,22 +672,9 @@
             }
 
             // Check dismissal
-            let dismissedAt = dismissedToastIds[n.id] || 0;
-            if (dismissedAt) {
-                if (n.settings.repeat_val > 0) {
-                    let multiplier = 1000 * 60;
-                    if (n.settings.repeat_unit === 'hours') multiplier *= 60;
-                    if (n.settings.repeat_unit === 'days') multiplier *= 60 * 24;
-
-                    const nextShow = dismissedAt + (n.settings.repeat_val * multiplier);
-                    if (Date.now() < nextShow) {
-                        ncLog(`NC: ID ${n.id} hidden by dismissal until ${new Date(nextShow)}`);
-                        return;
-                    }
-                } else {
-                    ncLog(`NC: ID ${n.id} dismissed forever`);
-                    return;
-                }
+            if (isDismissed(n.id, dismissedToastIds, n.settings.repeat_val, n.settings.repeat_unit)) {
+                ncLog(`NC: ID ${n.id} hidden by dismissal`);
+                return;
             }
 
             // Check if notification has any behavioral triggers
@@ -553,7 +689,8 @@
             } else if (hasBehavioralTriggers) {
                 // Other behavioral triggers - wait for events
                 triggerNotifications.push(n);
-                triggersFired[n.id] = false;
+                // Preserve fired state — don't reset if trigger already fired (prevents double-fire after renderAll)
+                if (!triggersFired[n.id]) triggersFired[n.id] = false;
                 ncLog(`NC: ID ${n.id} waiting for behavioral trigger`);
             } else {
                 // No triggers at all - show immediately (backward compatibility)
@@ -618,14 +755,18 @@
             lastActivityTime = Date.now();
         });
 
-        // Time on Page - check every second
-        setInterval(() => {
+        // Time on Page & Inactivity - combined check every second
+        triggerCheckInterval = setInterval(() => {
+            // Stop interval if all triggers have fired
+            const allFired = triggerNotifications.every(n => triggersFired[n.id]);
+            if (allFired && triggerNotifications.length > 0) {
+                ncLog('NC: All triggers fired, stopping interval');
+                clearInterval(triggerCheckInterval);
+                triggerCheckInterval = null;
+                return;
+            }
             const secondsOnPage = Math.floor((Date.now() - pageLoadTime) / 1000);
             checkTrigger('time_on_page', secondsOnPage);
-        }, 1000);
-
-        // Inactivity - check every second
-        setInterval(() => {
             const idleSeconds = Math.floor((Date.now() - lastActivityTime) / 1000);
             checkTrigger('inactivity', idleSeconds);
         }, 1000);
@@ -650,19 +791,7 @@
             if (triggersFired[n.id]) return; // Already fired
 
             // Check if notification was dismissed
-            const dismissedAt = dismissedToastIds[n.id] || 0;
-            if (dismissedAt) {
-                if (n.settings.repeat_val > 0) {
-                    let multiplier = 1000 * 60;
-                    if (n.settings.repeat_unit === 'hours') multiplier *= 60;
-                    if (n.settings.repeat_unit === 'days') multiplier *= 60 * 24;
-                    if (Date.now() < dismissedAt + (n.settings.repeat_val * multiplier)) {
-                        return; // Still in dismissal period
-                    }
-                } else {
-                    return; // Dismissed forever
-                }
-            }
+            if (isDismissed(n.id, dismissedToastIds, n.settings.repeat_val, n.settings.repeat_unit)) return;
 
             const triggers = n.settings.triggers || {};
             let shouldFire = false;
@@ -713,6 +842,18 @@
             return;
         }
 
+        // Skip dismissed/already-shown items in queue
+        while (floatingQueue.length > 0) {
+            const peek = floatingQueue[0];
+            if (shownSessionIds.includes(peek.id) ||
+                isDismissed(peek.id, dismissedToastIds, peek.settings.repeat_val, peek.settings.repeat_unit)) {
+                ncLog(`NC: Skipping ID ${peek.id} in queue (already shown or dismissed)`);
+                floatingQueue.shift();
+                continue;
+            }
+            break;
+        }
+
         if (floatingQueue.length === 0) {
             ncLog('NC: Global queue empty');
             return;
@@ -745,13 +886,27 @@
     function showFloating(n) {
         ncLog('NC: showFloating() called for ID', n.id, n.title);
 
-        // Prevent duplicate
-        if (document.querySelector(`.nc-floating[data-id="${n.id}"]`)) {
-            ncLog(`NC: ID ${n.id} already in DOM, skipping`);
+        // Final guard: check if dismissed (race condition protection)
+        if (isDismissed(n.id, dismissedToastIds, n.settings.repeat_val, n.settings.repeat_unit)) {
+            ncLog(`NC: ID ${n.id} was dismissed, skipping and showing next`);
+            activeFloatingId = null;
+            setTimeout(() => showNextFromGlobalQueue(), 50);
             return;
         }
 
-        shownSessionIds.push(n.id);
+        // Prevent duplicate in DOM
+        if (document.querySelector(`.nc-floating[data-id="${n.id}"]`)) {
+            ncLog(`NC: ID ${n.id} already in DOM, skipping`);
+            activeFloatingId = null;
+            setTimeout(() => showNextFromGlobalQueue(), 50);
+            return;
+        }
+
+        // Track in session (persisted to sessionStorage with cache version)
+        if (!shownSessionIds.includes(n.id)) {
+            shownSessionIds.push(n.id);
+            saveShownSession();
+        }
         ncLog('NC: Added to shownSessionIds, playing sound');
         playNotificationSound();
 
@@ -800,6 +955,7 @@
         const el = document.createElement('div');
         el.className = `nc-floating nc-pos-${pos.replace('_', '-')}`;
         el.dataset.id = n.id;
+        el.setAttribute('role', 'alert');
         // Floating always dismissible
 
         // Apply width
@@ -822,14 +978,6 @@
         const btnStyle = `background-color:${btnBg}; color:${btnText}; padding:6px 12px; border-radius:4px; text-decoration:none; display:inline-block; font-size:13px; margin-top:8px;`;
 
         // Icon
-        const renderIcon = (icon) => {
-            if (!icon) return '';
-            if (icon.indexOf('.') > -1 || icon.indexOf('/') > -1) {
-                return `<img src="${icon}" style="width:40px; height:40px; border-radius:6px; object-fit:cover; display:block;" alt="">`;
-            }
-            if (icon.startsWith('dashicons-')) return `<span class="dashicons ${icon}" style="font-size:32px; width:40px; height:40px; line-height:40px; text-align:center;"></span>`;
-            return `<span style="font-size:32px; width:40px; height:40px; line-height:40px; text-align:center;">${icon}</span>`;
-        };
         const iconHtml = n.icon ? `<div class="nc-floating-icon" style="margin-right:12px;">${renderIcon(n.icon)}</div>` : '';
 
         // Layout varies slightly for center vs corner?
@@ -855,6 +1003,9 @@
         // Append do DOM
         container.appendChild(el);
 
+        // Track view event
+        trackEvent(n.id, 'view');
+
         // KRYTYCZNE: Inicjalizacja Fluent Forms ПОСЛЕ dodania do DOM
         if (typeof window.ncInitFluentForms === 'function') {
             window.ncInitFluentForms(el);
@@ -871,17 +1022,31 @@
             e.stopPropagation();
         });
 
-        // Auto-close duration
+        // Auto-close duration (paused if user is interacting with a form inside)
         const duration = (parseInt(n.settings.floating_duration) || 0) * 1000;
         if (duration > 0) {
-            setTimeout(() => {
-                // double check existence
-                if (document.body.contains(el)) closeFloating(n.id, isCenter);
-            }, duration);
+            const tryAutoClose = () => {
+                if (!document.body.contains(el)) return;
+                // Don't auto-close if user has focus inside the notification (e.g. filling a form)
+                if (el.contains(document.activeElement) && document.activeElement.tagName !== 'BUTTON') {
+                    ncLog(`NC: Auto-close deferred for ID ${n.id} (user interacting)`);
+                    setTimeout(tryAutoClose, 3000); // Retry in 3s
+                    return;
+                }
+                closeFloating(n.id, isCenter);
+            };
+            setTimeout(tryAutoClose, duration);
         }
     }
 
     function closeFloating(id, isCenter) {
+        // If this is a user notification, dismiss via API
+        if (String(id).startsWith('user_')) {
+            dismissUserNotification(id);
+        }
+        // Immediately mark as dismissed in ALL stores (floating + sidebar + topbar)
+        dismissEverywhere(id);
+
         if (isCenter) {
             const overlay = document.querySelector(`.nc-pos-center-overlay[data-id="${id}"]`);
             if (overlay) {
@@ -895,7 +1060,7 @@
                 setTimeout(() => el.remove(), 300);
             }
         }
-        dismissToastItem(id);
+        trackEvent(id, 'dismiss');
 
         // Clear active and show next from global queue
         if (activeFloatingId === id) {
@@ -911,38 +1076,29 @@
     function markAsRead(id) {
         if (!readIds.includes(id)) {
             readIds.push(id);
-            localStorage.setItem('nc_read_ids', JSON.stringify(readIds));
+            storageSet('nc_read_ids', readIds);
             renderAll();
         }
     }
 
     function markAllAsRead() {
         notifications.forEach(n => {
-            if (!readIds.includes(n.id)) readIds.push(n.id);
+            if (n.type === 'user') {
+                // Mark user notifications read via API
+                if (!n.is_read) markUserNotificationRead(n.id);
+            } else {
+                if (!readIds.includes(n.id)) readIds.push(n.id);
+            }
         });
-        localStorage.setItem('nc_read_ids', JSON.stringify(readIds));
+        storageSet('nc_read_ids', readIds);
         renderAll();
     }
 
     function dismissItem(id) {
-        // Upgrade flow: if array, convert to map
-        let store = dismissedIds;
-        if (Array.isArray(store)) {
-            store = {};
-        }
-
         ncLog('NC: Dismissing item', id);
-        store[id] = Date.now();
-        dismissedIds = store; // Update global
-        localStorage.setItem('nc_dismissed_ids', JSON.stringify(store));
+        trackEvent(id, 'dismiss');
+        dismissEverywhere(id);
         renderAll();
-    }
-
-    function dismissToastItem(id) {
-        // Save dismissed toast/floating notification to localStorage
-        ncLog('NC: Dismissing toast/floating item', id);
-        dismissedToastIds[id] = Date.now();
-        localStorage.setItem('nc_dismissed_toast_ids', JSON.stringify(dismissedToastIds));
     }
 
     let activeToastCount = 0; // Track active toasts for listener management
@@ -962,6 +1118,12 @@
         }
     }
 
+    function focusFirstInDrawer() {
+        if (!drawer) return;
+        const focusable = drawer.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (focusable) focusable.focus();
+    }
+
     function toggleDrawer(e) {
         if (e && e.preventDefault) e.preventDefault();
 
@@ -978,17 +1140,20 @@
                 drawer.style.display = 'none';
                 overlay.classList.remove('open');
                 document.body.classList.remove('nc-scroll-lock');
+                if (bellContainer) bellContainer.focus();
             } else {
                 drawer.style.display = 'block';
                 overlay.classList.add('open');
                 document.body.classList.add('nc-scroll-lock');
+                focusFirstInDrawer();
 
-                // User Request: Closing toasts when drawer opens
-                document.querySelectorAll('.nc-toast').forEach(toast => {
-                    const id = toast.dataset.id;
-                    if (id) dismissToastItem(id);
+                // Close floating notifications when drawer opens
+                document.querySelectorAll('.nc-floating').forEach(el => {
+                    const id = el.dataset.id;
+                    if (id) closeFloating(id, !!el.closest('.nc-pos-center-overlay'));
                 });
             }
+            if (bellContainer) bellContainer.setAttribute('aria-expanded', !isOpen);
             checkListeners();
         } else {
             // Classic Drawer
@@ -996,19 +1161,23 @@
             drawer.classList.toggle('open');
             overlay.classList.toggle('open');
 
-            if (drawer.classList.contains('open')) {
+            const isNowOpen = drawer.classList.contains('open');
+
+            if (isNowOpen) {
                 document.body.classList.add('nc-scroll-lock');
+                focusFirstInDrawer();
             } else {
                 document.body.classList.remove('nc-scroll-lock');
+                if (bellContainer) bellContainer.focus();
             }
 
-            // Allow closing toasts in classic mode too if desired? 
-            // User asked "klikanie dzwoneczka bylo tez trger na zamkniecie toast powiadomin"
-            // Let's add it here too for consistency
-            if (drawer.classList.contains('open')) {
-                document.querySelectorAll('.nc-toast').forEach(toast => {
-                    const id = toast.dataset.id;
-                    if (id) dismissToastItem(id);
+            if (bellContainer) bellContainer.setAttribute('aria-expanded', isNowOpen);
+
+            // Close floating notifications when drawer opens
+            if (isNowOpen) {
+                document.querySelectorAll('.nc-floating').forEach(el => {
+                    const id = el.dataset.id;
+                    if (id) closeFloating(id, !!el.closest('.nc-pos-center-overlay'));
                 });
             }
         }
@@ -1064,14 +1233,9 @@
     let topBarItems = [];
     let topBarCurrentIndex = 0;
     let topBarInterval = null;
-    const topBarDismissedKey = 'nc_topbar_dismissed';
 
     function getTopBarDismissed() {
-        try {
-            return JSON.parse(localStorage.getItem(topBarDismissedKey) || '{}');
-        } catch {
-            return {};
-        }
+        return storageGet(topBarDismissedKey, {});
     }
 
     function renderTopBar() {
@@ -1089,19 +1253,7 @@
             if (!n.settings.topbar) return false;
 
             // Check if dismissed
-            const dismissedAt = dismissed[n.id] || 0;
-            if (!dismissedAt) return true;
-
-            // Check repeat policy
-            if (n.settings.repeat_val > 0) {
-                let multiplier = 1000 * 60;
-                if (n.settings.repeat_unit === 'hours') multiplier *= 60;
-                if (n.settings.repeat_unit === 'days') multiplier *= 60 * 24;
-                if (Date.now() > dismissedAt + (n.settings.repeat_val * multiplier)) {
-                    return true;
-                }
-            }
-            return false;
+            return !isDismissed(n.id, dismissed, n.settings.repeat_val, n.settings.repeat_unit);
         });
 
         if (topBarItems.length === 0) {
@@ -1151,6 +1303,8 @@
         topBarContainer.innerHTML = html;
         topBarContainer.style.display = 'flex';
         document.body.classList.add('nc-topbar-active');
+        // Track view for topbar items
+        topBarItems.forEach(function(n) { trackEvent(n.id, 'view'); });
         topBarCurrentIndex = 0;
 
         // Toggle sticky class based on setting
@@ -1254,12 +1408,11 @@
     }
 
     function dismissTopBar() {
-        // Dismiss all topbar items
-        const dismissed = getTopBarDismissed();
+        // Dismiss all topbar items in ALL stores
         topBarItems.forEach(n => {
-            dismissed[n.id] = Date.now();
+            trackEvent(n.id, 'dismiss');
+            dismissEverywhere(n.id);
         });
-        localStorage.setItem(topBarDismissedKey, JSON.stringify(dismissed));
 
         // Hide the bar
         topBarContainer.style.display = 'none';
@@ -1276,16 +1429,16 @@
         let target;
 
         if (countdown.type === 'date' && countdown.date) {
-            // Specific date/time
+            // Specific date/time (stored in server timezone)
             target = new Date(countdown.date).getTime();
         } else if (countdown.type === 'daily' && countdown.time) {
-            // Daily - today at specified time
+            // Daily - today at specified time, using server-adjusted clock
             const [hours, minutes] = countdown.time.split(':').map(Number);
-            const now = new Date();
+            const now = new Date(getServerNow());
             target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0).getTime();
 
-            // If already passed today, set for tomorrow
-            if (target < Date.now()) {
+            // If already passed today (server time), set for tomorrow
+            if (target < getServerNow()) {
                 target += 24 * 60 * 60 * 1000;
             }
         }
@@ -1294,7 +1447,7 @@
     }
 
     function calculateTimeLeft(targetMs) {
-        const now = Date.now();
+        const now = getServerNow();
         const diff = targetMs - now;
 
         if (diff <= 0) {
@@ -1344,12 +1497,12 @@
             document.querySelectorAll('.nc-countdown').forEach(el => {
                 let target = parseInt(el.dataset.target);
 
-                // For daily type, check if we need to reset
-                if (el.dataset.type === 'daily' && target < Date.now()) {
+                // For daily type, check if we need to reset (using server time)
+                if (el.dataset.type === 'daily' && target < getServerNow()) {
                     const [hours, minutes] = (el.dataset.time || '10:00').split(':').map(Number);
-                    const now = new Date();
+                    const now = new Date(getServerNow());
                     target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0).getTime();
-                    if (target < Date.now()) target += 24 * 60 * 60 * 1000;
+                    if (target < getServerNow()) target += 24 * 60 * 60 * 1000;
                     el.dataset.target = target;
                 }
 
@@ -1404,10 +1557,62 @@
         return "Przed chwilą";
     }
 
+    // ============================================
+    // USER NOTIFICATION API HELPERS
+    // ============================================
+    function getUserNotifRealId(prefixedId) {
+        // 'user_123' → 123
+        return parseInt(String(prefixedId).replace('user_', ''), 10);
+    }
+
+    function markUserNotificationRead(prefixedId) {
+        const realId = getUserNotifRealId(prefixedId);
+        fetch(apiRoot + 'user-notifications/read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': ncData.nonce },
+            body: JSON.stringify({ id: realId })
+        }).then(() => {
+            // Update local state
+            const n = notifications.find(x => x.id === prefixedId);
+            if (n) n.is_read = true;
+            renderAll();
+        }).catch(err => console.error('NC: Error marking user notification read', err));
+    }
+
+    function dismissUserNotification(prefixedId) {
+        const realId = getUserNotifRealId(prefixedId);
+        trackEvent(prefixedId, 'dismiss');
+        fetch(apiRoot + 'user-notifications/dismiss', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': ncData.nonce },
+            body: JSON.stringify({ id: realId })
+        }).then(() => {
+            // Remove from local notifications array
+            notifications = notifications.filter(x => x.id !== prefixedId);
+            // Also dismiss in localStorage stores for floating/session tracking
+            dismissEverywhere(prefixedId);
+            renderAll();
+        }).catch(err => console.error('NC: Error dismissing user notification', err));
+    }
+
+    // ============================================
+    // ONESIGNAL LOGIN
+    // ============================================
+    if (ncData.userId > 0 && typeof window.OneSignal !== 'undefined') {
+        try {
+            window.OneSignal.login(String(ncData.userId));
+            ncLog('NC: OneSignal login for user', ncData.userId);
+        } catch (e) {
+            ncLog('NC: OneSignal login failed', e);
+        }
+    }
+
     function playNotificationSound() {
         if (!ncData.enableSound) return;
-        // Demo sound (Bell)
-        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        // Use local sound file served by the plugin (ncData.soundUrl set by PHP)
+        const url = ncData.soundUrl;
+        if (!url) return;
+        const audio = new Audio(url);
         audio.volume = 0.5;
         audio.play().catch(() => { });
     }

@@ -5,7 +5,7 @@ Tags: notifications, popup, toast, announcement bar, exit intent
 Requires at least: 5.8
 Tested up to: 6.4
 Requires PHP: 7.4
-Stable tag: 1.0.3
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,11 +46,12 @@ Advanced on-site notification center with floating popups, toasts, top bar annou
   * User role targeting
   * Schedule by date/time
 
-= Pro Features (Coming Soon) =
-
-* OneSignal push notification integration
-* Advanced analytics
-* A/B testing
+* **WooCommerce Integration:**
+  * Order status change notifications (processing, completed, on-hold, refunded, cancelled)
+  * New order confirmation
+  * Abandoned cart reminders (configurable delay)
+  * Per-event toggle in settings
+  * OneSignal push support
 
 == Installation ==
 
@@ -87,6 +88,20 @@ Exit Intent detects when a user moves their mouse toward the browser's close/tab
 
 == Changelog ==
 
+= 1.2.0 =
+* NEW: Per-user WooCommerce notifications (order status changes, new orders, abandoned cart)
+* NEW: Custom database table `nc_user_notifications` for lightweight per-user storage
+* NEW: REST API endpoints for user notifications (GET, read, dismiss)
+* NEW: WooCommerce settings section with per-event toggles
+* NEW: Abandoned cart detection with configurable delay (cron-based)
+* NEW: OneSignal push integration for WooCommerce events
+* NEW: OneSignal.login() auto-call for logged-in users
+* NEW: User notification styling with category badges (Zamówienie/Koszyk)
+* IMPROVED: Notifications merge - user notifications appear between pinned and regular
+* IMPROVED: Mobile responsiveness - 320px breakpoint, 44px touch targets for CTA buttons
+* IMPROVED: Badge count includes user notifications via server-side is_read flag
+* IMPROVED: Uninstall cleanup for new table, crons, and user meta
+
 = 1.0.3 =
 * Added behavioral triggers (Exit Intent, Scroll Depth, Time on Page, Inactivity, Click)
 * Implemented global notification queue (one at a time)
@@ -109,11 +124,14 @@ Exit Intent detects when a user moves their mouse toward the browser's close/tab
 
 == Upgrade Notice ==
 
+= 1.2.0 =
+Major update: WooCommerce per-user notifications with order tracking, abandoned cart, and OneSignal push. Reactivate plugin to create the new database table.
+
 = 1.0.3 =
 Major update with behavioral triggers and improved queue system. Recommended for all users.
 
 == Privacy Policy ==
 
-This plugin stores notification dismissal data in the browser's localStorage. No personal data is sent to external servers.
+This plugin stores notification dismissal data in the browser's localStorage. For logged-in WooCommerce users, per-user notification read/dismiss state is stored in the database.
 
-The plugin does not collect any user data or use cookies for tracking purposes.
+If OneSignal push is enabled, notification titles and content are sent to OneSignal's servers for push delivery. No other personal data is sent to external servers.
