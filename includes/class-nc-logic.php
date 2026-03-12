@@ -186,8 +186,9 @@ class NC_Logic {
        
 	return [
 		'id' => $post->ID,
-		'title' => do_shortcode( $post->post_title ),
-		'body' => apply_filters( 'the_content', $post->post_content ),
+		'title' => do_shortcode( $get('nc_title') ?: $post->post_title ),
+		'title_css' => $get('nc_title_custom_css_enabled') === '1' ? $get('nc_title_custom_css') : '',
+		'body' => do_shortcode( $get('nc_description') ),
            'cta_label' => $get('nc_cta_label'),
            'cta_url' => $get('nc_cta_url'),
            'icon' => $get('nc_icon'),

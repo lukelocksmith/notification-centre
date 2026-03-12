@@ -24,6 +24,10 @@ class NC_Metaboxes {
 
     public function render_settings_box( $post ) {
 		// Data
+        $nc_title = get_post_meta( $post->ID, 'nc_title', true );
+        $nc_description = get_post_meta( $post->ID, 'nc_description', true );
+        $nc_title_custom_css_enabled = get_post_meta( $post->ID, 'nc_title_custom_css_enabled', true );
+        $nc_title_custom_css = get_post_meta( $post->ID, 'nc_title_custom_css', true );
         $cta_label = get_post_meta( $post->ID, 'nc_cta_label', true );
         $cta_url = get_post_meta( $post->ID, 'nc_cta_url', true );
         $icon = get_post_meta( $post->ID, 'nc_icon', true );
@@ -223,9 +227,41 @@ class NC_Metaboxes {
         </div>
 
 
-        <!-- SECTION 2: CONTENT -->
+        <!-- SECTION 2: TITLE & DESCRIPTION -->
         <div class="nc-row">
-            <h3>2. Przycisk (CTA)</h3>
+            <h3>2. Tytuł i Opis</h3>
+            <p style="display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
+                <span>
+                    <label class="nc-label">Tytuł notyfikacji</label>
+                    <input type="text" name="nc_title" value="<?php echo esc_attr($nc_title); ?>" class="regular-text" placeholder="Widoczny tytuł w notyfikacji">
+                </span>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:600; white-space:nowrap; cursor:pointer;">
+                    <input type="checkbox" name="nc_title_custom_css_enabled" id="nc_title_custom_css_enabled" value="1" <?php checked($nc_title_custom_css_enabled, '1'); ?>>
+                    Custom CSS tytułu
+                </label>
+            </p>
+            <div id="nc-title-css-wrap" style="<?php echo $nc_title_custom_css_enabled === '1' ? '' : 'display:none;'; ?> margin-bottom:10px; margin-left:184px;">
+                <textarea name="nc_title_custom_css" rows="4" style="width:100%; max-width:400px; font-family:monospace;" placeholder="font-size: 22px;&#10;font-weight: 900;&#10;letter-spacing: -1px;"><?php echo esc_textarea($nc_title_custom_css); ?></textarea>
+                <p class="description" style="margin-top:4px;">CSS wpisz jako właściwości inline, np. <code>font-size: 22px; font-weight: 900;</code> — nadpisuje domyślne style tytułu.</p>
+            </div>
+            <script>
+            jQuery(document).ready(function($){
+                $('#nc_title_custom_css_enabled').change(function(){
+                    if(this.checked) $('#nc-title-css-wrap').slideDown();
+                    else $('#nc-title-css-wrap').slideUp();
+                });
+            });
+            </script>
+            <p>
+                <label class="nc-label" style="vertical-align:top; margin-top:4px;">Opis</label>
+                <textarea name="nc_description" rows="3" class="regular-text" style="width:100%; max-width:400px;" placeholder="Możesz użyć shortcode, np. [contact-form-7 id=&quot;1&quot;]"><?php echo esc_textarea($nc_description); ?></textarea>
+                <span class="description" style="display:block; margin-left:184px; margin-top:4px;">Obsługuje shortcody WordPress.</span>
+            </p>
+        </div>
+
+        <!-- SECTION 3: CTA -->
+        <div class="nc-row">
+            <h3>3. Przycisk (CTA)</h3>
             <p>
                 <label class="nc-label">Etykieta przycisku</label>
                 <input type="text" name="nc_cta_label" value="<?php echo esc_attr($cta_label); ?>" class="regular-text">
@@ -236,10 +272,10 @@ class NC_Metaboxes {
                 <p class="description" style="margin-left:184px; margin-top:5px; color:#888;">np. <code>https://google.com</code> lub <code>/kontakt</code></p>
             </p>
         </div>
-        
-        <!-- SECTION 3: RULES -->
+
+        <!-- SECTION 4: RULES -->
         <div class="nc-row">
-                <h3>3. Targetowanie (Reguły)</h3>
+                <h3>4. Targetowanie (Reguły)</h3>
                 <p>
                     <label class="nc-label">Kto widzi?</label>
                     <select name="nc_audience">
@@ -378,9 +414,9 @@ class NC_Metaboxes {
             </div>
 
 
-        <!-- SECTION 3: SCHEDULE & TIME -->
+        <!-- SECTION 5: SCHEDULE & TIME -->
         <div class="nc-row">
-            <h3>3. Harmonogram i Czas</h3>
+            <h3>5. Harmonogram i Czas</h3>
             <div style="display:flex; flex-wrap:wrap; gap:20px;">
                 <!-- Column 1: Active Period -->
                 <div style="flex:1; min-width:300px;">
@@ -508,9 +544,9 @@ class NC_Metaboxes {
             </script>
         </div>
         
-        <!-- SECTION 4: APPEARANCE -->
+        <!-- SECTION 6: APPEARANCE -->
         <div class="nc-row">
-            <h3>4. Wygląd</h3>
+            <h3>6. Wygląd</h3>
             <p class="description">Pozostaw puste, aby użyć kolorów globalnych.</p>
             <?php 
                 // Get global defaults
@@ -565,9 +601,23 @@ class NC_Metaboxes {
 			return;
 		}
 
+        // nc_description (textarea, shortcode-safe)
+        if ( isset( $_POST['nc_description'] ) ) {
+            update_post_meta( $post_id, 'nc_description', sanitize_textarea_field( $_POST['nc_description'] ) );
+        } else {
+            delete_post_meta( $post_id, 'nc_description' );
+        }
+
+        // nc_title_custom_css (textarea)
+        if ( isset( $_POST['nc_title_custom_css'] ) ) {
+            update_post_meta( $post_id, 'nc_title_custom_css', sanitize_textarea_field( $_POST['nc_title_custom_css'] ) );
+        } else {
+            delete_post_meta( $post_id, 'nc_title_custom_css' );
+        }
+
         // Text/Select fields
         $fields = [
-            'nc_cta_url', 'nc_cta_label', 'nc_icon', 'nc_active_from', 'nc_active_to', 'nc_audience', 
+            'nc_title', 'nc_cta_url', 'nc_cta_label', 'nc_icon', 'nc_active_from', 'nc_active_to', 'nc_audience',
             'nc_floating_delay', 'nc_floating_duration', 'nc_floating_width', 'nc_floating_position',
             'nc_repeat_value', 'nc_repeat_unit',
             'nc_bg_color', 'nc_text_color', 'nc_btn_bg_color', 'nc_btn_text_color',
@@ -621,6 +671,7 @@ class NC_Metaboxes {
         
         // Checkboxes
         $checkboxes = [
+            'nc_title_custom_css_enabled',
             'nc_show_in_sidebar', 'nc_sidebar_pinned', 'nc_sidebar_permanent',
             'nc_show_as_floating',
             'nc_show_as_topbar', 'nc_topbar_permanent',

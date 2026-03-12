@@ -546,7 +546,7 @@
                             ${!n.settings.sidebar_permanent ? '<button class="nc-dismiss" title="Usuń">&times;</button>' : ''}
                         </div>
                         <div class="nc-item-body">
-                            <h4 style="color:inherit;">${!isRead ? '<span class="nc-new-badge">Nowe</span>' : ''}${n.title}</h4>
+                            <h4 style="color:inherit;${n.title_css ? ' ' + n.title_css : ''}">${!isRead ? '<span class="nc-new-badge">Nowe</span>' : ''}${n.title}</h4>
                             ${bodyHtml}
                             ${toggleBtn}
                             ${n.settings.countdown && n.settings.countdown.enabled ? renderCountdownHTML(n.settings.countdown, true) : ''}
@@ -988,8 +988,8 @@
             <div class="nc-floating-header">
                 ${iconHtml}
                 <div style="flex-grow:1;">
-                    <div class="nc-floating-title">${n.title}</div>
-                    <div class="nc-floating-body" style="font-size:13px; opacity:0.9; margin-top:4px;">${n.body}</div>
+                    <div class="nc-floating-title"${n.title_css ? ` style="${n.title_css}"` : ''}>${n.title}</div>
+                    <div class="nc-floating-body">${n.body}</div>
                     ${n.settings.countdown && n.settings.countdown.enabled ? renderCountdownHTML(n.settings.countdown, true) : ''}
                     ${n.cta_label ? `<a href="${n.cta_url}" class="nc-floating-btn" style="${btnStyle}">${n.cta_label}</a>` : ''}
                 </div>
@@ -1279,13 +1279,19 @@
         // Items
         topBarItems.forEach((n, i) => {
             const activeClass = i === 0 ? 'active' : '';
-            html += `<div class="nc-topbar-item ${activeClass}" data-id="${n.id}">`;
-            html += `<span class="nc-topbar-title">${n.title}</span>`;
+            const cs = n.settings.colors || {};
+            const itemStyle = cs.bg ? `background-color:${cs.bg}; color:${cs.text || '#fff'};` : '';
+            html += `<div class="nc-topbar-item ${activeClass}" data-id="${n.id}" style="${itemStyle}">`;
+            html += `<span class="nc-topbar-title"${n.title_css ? ` style="${n.title_css}"` : ''}>${n.title}</span>`;
+            if (n.body) {
+                html += `<span class="nc-topbar-description">${n.body}</span>`;
+            }
             if (n.settings.countdown && n.settings.countdown.enabled) {
                 html += renderCountdownHTML(n.settings.countdown, false);
             }
             if (n.cta_label && n.cta_url) {
-                html += `<a href="${n.cta_url}" class="nc-topbar-btn">${n.cta_label}</a>`;
+                const btnStyle = cs.btn_bg ? `background-color:${cs.btn_bg}; color:${cs.btn_text || '#fff'};` : '';
+                html += `<a href="${n.cta_url}" class="nc-topbar-btn"${btnStyle ? ` style="${btnStyle}"` : ''}>${n.cta_label}</a>`;
             }
             html += '</div>';
         });
@@ -1301,6 +1307,7 @@
         html += '</div>';
 
         topBarContainer.innerHTML = html;
+        applyTopBarContainerColors(0);
         topBarContainer.style.display = 'flex';
         document.body.classList.add('nc-topbar-active');
         // Track view for topbar items
@@ -1368,6 +1375,19 @@
         }, speed);
     }
 
+    function applyTopBarContainerColors(index) {
+        const item = topBarItems[index];
+        if (!item) return;
+        const cs = item.settings.colors || {};
+        if (cs.bg) {
+            topBarContainer.style.backgroundColor = cs.bg;
+            topBarContainer.style.color = cs.text || '';
+        } else {
+            topBarContainer.style.backgroundColor = '';
+            topBarContainer.style.color = '';
+        }
+    }
+
     function stopTopBarRotation() {
         if (topBarInterval) {
             clearInterval(topBarInterval);
@@ -1405,6 +1425,7 @@
         }, 400);
 
         topBarCurrentIndex = nextIndex;
+        applyTopBarContainerColors(nextIndex);
     }
 
     function dismissTopBar() {

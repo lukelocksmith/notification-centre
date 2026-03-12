@@ -10,7 +10,15 @@ class NC_Post_Type {
 		add_action( 'init', [ $this, 'register_cpt' ] );
         add_action( 'init', [ $this, 'register_taxonomy' ] );
         add_action( 'admin_menu', [ $this, 'fix_admin_menu_title' ], 999 );
+        add_filter( 'enter_title_here', [ $this, 'change_title_placeholder' ], 10, 2 );
 	}
+
+    public function change_title_placeholder( $placeholder, $post ) {
+        if ( $post->post_type === 'nc_notification' ) {
+            return 'Nazwa wewnętrzna (np. "Promocja majowa")';
+        }
+        return $placeholder;
+    }
 
     public function fix_admin_menu_title() {
         global $menu;
@@ -46,7 +54,7 @@ class NC_Post_Type {
 			'hierarchical'       => false,
 			'menu_position'      => 30,
             'menu_icon'          => 'dashicons-bell',
-			'supports'           => [ 'title', 'editor', 'thumbnail', 'custom-fields' ], 
+			'supports'           => [ 'title', 'custom-fields' ],
 		];
 
 		register_post_type( 'nc_notification', $args );

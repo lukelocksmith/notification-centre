@@ -5,7 +5,7 @@ Tags: notifications, popup, toast, announcement bar, exit intent
 Requires at least: 5.8
 Tested up to: 6.4
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -87,6 +87,14 @@ Exit Intent detects when a user moves their mouse toward the browser's close/tab
 5. Notification center drawer
 
 == Changelog ==
+
+= 1.3.0 =
+* NEW: Separate notification title field (nc_title) - post title is now internal name only
+* NEW: Description field (nc_description) for all notification types
+* IMPROVED: Top bar now applies per-notification background and button colors
+* IMPROVED: Top bar displays description between title and CTA button
+* IMPROVED: CTA section moved to position 3, title/description to position 2
+* CHANGED: TinyMCE/WP editor disabled - replaced by dedicated title and description fields
 
 = 1.2.0 =
 * NEW: Per-user WooCommerce notifications (order status changes, new orders, abandoned cart)
