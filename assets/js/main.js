@@ -398,9 +398,10 @@
             pid: getPostId() // helper needed
         });
 
-        // Fetch CPT notifications
-        const cptPromise = fetch(apiRoot + 'notifications?' + params.toString())
-            .then(res => res.json());
+        // Fetch CPT notifications (include nonce so WP can identify logged-in user)
+        const cptPromise = fetch(apiRoot + 'notifications?' + params.toString(), {
+            headers: { 'X-WP-Nonce': ncData.nonce }
+        }).then(res => res.json());
 
         // Fetch user notifications if logged in
         const userPromise = (ncData.userId > 0)
