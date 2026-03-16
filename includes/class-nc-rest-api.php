@@ -118,6 +118,15 @@ class NC_Rest_Api {
 	}
 
 	public function get_items( $request ) {
+        // Nonce-based auth may fail when HTML is cached (stale nonce).
+        // Fall back to direct cookie validation for GET requests — safe for read-only data.
+        if ( get_current_user_id() === 0 && defined( 'LOGGED_IN_COOKIE' ) && isset( $_COOKIE[ LOGGED_IN_COOKIE ] ) ) {
+            $cookie_user_id = wp_validate_auth_cookie( $_COOKIE[ LOGGED_IN_COOKIE ], 'logged_in' );
+            if ( $cookie_user_id ) {
+                wp_set_current_user( $cookie_user_id );
+            }
+        }
+
         $context = [
             'url' => esc_url_raw( $request->get_param('url') ?: '' ),
             'post_id' => absint( $request->get_param('pid') ?: 0 ),
