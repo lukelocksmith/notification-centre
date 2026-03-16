@@ -110,7 +110,7 @@ class NC_Logic {
 
 		if ( $audience === 'logged_in' && $user_id === 0 ) return false;
 		if ( $audience === 'guests' && $user_id !== 0 ) return false;
-        // Roles check logic placeholder
+		if ( $audience === 'administrator' && ! current_user_can( 'administrator' ) ) return false;
         
         // 3. Page Rules Check
         if ( ! self::check_page_rules( $id, $context ) ) return false;

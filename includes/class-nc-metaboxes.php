@@ -282,6 +282,7 @@ class NC_Metaboxes {
                         <option value="all" <?php selected($audience, 'all'); ?>>Wszyscy</option>
                         <option value="logged_in" <?php selected($audience, 'logged_in'); ?>>Tylko zalogowani</option>
                         <option value="guests" <?php selected($audience, 'guests'); ?>>Tylko goście</option>
+                        <option value="administrator" <?php selected($audience, 'administrator'); ?>>Tylko administrator</option>
                     </select>
                 </p>
                 
