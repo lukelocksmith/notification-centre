@@ -1444,6 +1444,26 @@
     // ============================================
     // COUNTDOWN TIMER
     // ============================================
+    // Compute UTC ms timestamp for "HH:MM today in site timezone", or tomorrow if already past
+    function getDailyTargetInTimezone(hours, minutes) {
+        const timezone = ncData.timezone || 'Europe/Warsaw';
+        const now = new Date();
+        // Get current moment expressed as "local time" in site timezone
+        const siteNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+        // UTC offset: how many ms ahead/behind UTC the site timezone is right now
+        const tzOffset = now.getTime() - siteNow.getTime();
+        // Build midnight in site timezone
+        const siteMidnight = new Date(siteNow);
+        siteMidnight.setHours(0, 0, 0, 0);
+        // Target = midnight + desired hour/min, converted back to UTC
+        let target = siteMidnight.getTime() + hours * 3600000 + minutes * 60000 + tzOffset;
+        // If already past target time in site timezone, move to tomorrow
+        if (target <= now.getTime()) {
+            target += 24 * 60 * 60 * 1000;
+        }
+        return target;
+    }
+
     function getCountdownTarget(countdown) {
         if (!countdown || !countdown.enabled) return null;
 
@@ -1453,22 +1473,16 @@
             // Specific date/time (stored in server timezone)
             target = new Date(countdown.date).getTime();
         } else if (countdown.type === 'daily' && countdown.time) {
-            // Daily - today at specified time, using server-adjusted clock
+            // Daily - today at specified time, using site timezone
             const [hours, minutes] = countdown.time.split(':').map(Number);
-            const now = new Date(getServerNow());
-            target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0).getTime();
-
-            // If already passed today (server time), set for tomorrow
-            if (target < getServerNow()) {
-                target += 24 * 60 * 60 * 1000;
-            }
+            target = getDailyTargetInTimezone(hours, minutes);
         }
 
         return target || null;
     }
 
     function calculateTimeLeft(targetMs) {
-        const now = getServerNow();
+        const now = Date.now();
         const diff = targetMs - now;
 
         if (diff <= 0) {
@@ -1518,12 +1532,10 @@
             document.querySelectorAll('.nc-countdown').forEach(el => {
                 let target = parseInt(el.dataset.target);
 
-                // For daily type, check if we need to reset (using server time)
-                if (el.dataset.type === 'daily' && target < getServerNow()) {
+                // For daily type, check if we need to reset
+                if (el.dataset.type === 'daily' && target < Date.now()) {
                     const [hours, minutes] = (el.dataset.time || '10:00').split(':').map(Number);
-                    const now = new Date(getServerNow());
-                    target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0).getTime();
-                    if (target < getServerNow()) target += 24 * 60 * 60 * 1000;
+                    target = getDailyTargetInTimezone(hours, minutes);
                     el.dataset.target = target;
                 }
 
