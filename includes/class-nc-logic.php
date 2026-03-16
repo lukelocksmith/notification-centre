@@ -104,16 +104,7 @@ class NC_Logic {
             }
         }
 
-		// 2. Audience Check
-		$audience = get_post_meta( $id, 'nc_audience', true ) ?: 'all';
-		$user_id = $context['user_id'] ?? 0;
-
-		if ( $audience === 'logged_in' && $user_id === 0 ) return false;
-		if ( $audience === 'guests' && $user_id !== 0 ) return false;
-		if ( $audience === 'administrator' ) {
-			$user = wp_get_current_user();
-			if ( ! in_array( 'administrator', (array) $user->roles, true ) ) return false;
-		}
+		// 2. Audience Check — handled client-side via ncData.userIsAdmin / ncData.userId
         
         // 3. Page Rules Check
         if ( ! self::check_page_rules( $id, $context ) ) return false;
@@ -189,6 +180,7 @@ class NC_Logic {
        
 	return [
 		'id' => $post->ID,
+		'audience' => $get('nc_audience') ?: 'all',
 		'title' => do_shortcode( $get('nc_title') ?: $post->post_title ),
 		'title_css' => $get('nc_title_custom_css_enabled') === '1' ? $get('nc_title_custom_css') : '',
 		'body' => do_shortcode( $get('nc_description') ),

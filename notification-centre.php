@@ -243,6 +243,7 @@ class Notification_Centre {
 			'root' => esc_url_raw( rest_url() ),
 			'nonce' => wp_create_nonce( 'wp_rest' ),
             'userId' => get_current_user_id(),
+            'userIsAdmin' => in_array( 'administrator', (array) wp_get_current_user()->roles, true ),
             'panelPosition' => 'right',
             'displayMode' => $options['nc_display_mode'] ?: 'drawer', 
             'drawerWidth' => $drawer_width,

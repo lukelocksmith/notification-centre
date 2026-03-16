@@ -412,6 +412,14 @@
 
         Promise.all([cptPromise, userPromise])
             .then(([cptData, userData]) => {
+                // Filter by audience using PHP-rendered user data (reliable, not REST-auth-dependent)
+                cptData = cptData.filter(n => {
+                    const audience = n.audience || 'all';
+                    if (audience === 'guests') return ncData.userId == 0;
+                    if (audience === 'administrator') return ncData.userIsAdmin === true;
+                    return true;
+                });
+
                 ncLog('NC: Fetched ' + cptData.length + ' CPT + ' + userData.length + ' user notifications');
 
                 // Store user notifications separately for API-based dismiss/read
