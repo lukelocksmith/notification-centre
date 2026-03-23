@@ -5,7 +5,7 @@ Tags: notifications, popup, toast, announcement bar, exit intent
 Requires at least: 5.8
 Tested up to: 6.4
 Requires PHP: 7.4
-Stable tag: 1.3.2
+Stable tag: 1.3.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -87,6 +87,9 @@ Exit Intent detects when a user moves their mouse toward the browser's close/tab
 5. Notification center drawer
 
 == Changelog ==
+
+= 1.3.3 =
+* FIX: Powiadomienie z typem "Codziennie (Happy Hours)" i włączoną opcją "Ukryj gdy czas minie" teraz poprawnie znika po upływie godziny końca — zamiast resetować odliczanie do następnego dnia
 
 = 1.3.0 =
 * NEW: Separate notification title field (nc_title) - post title is now internal name only

@@ -1508,7 +1508,7 @@
 
         const pad = n => String(n).padStart(2, '0');
 
-        let html = `<div class="nc-countdown${time.expired ? ' expired' : ''}" data-target="${target}" data-type="${countdown.type}" data-time="${countdown.time || ''}">`;
+        let html = `<div class="nc-countdown${time.expired ? ' expired' : ''}" data-target="${target}" data-type="${countdown.type}" data-time="${countdown.time || ''}" data-autohide="${countdown.autohide ? '1' : ''}">`;
         html += label;
         html += '<div class="nc-countdown-timer">';
 
@@ -1533,8 +1533,14 @@
             document.querySelectorAll('.nc-countdown').forEach(el => {
                 let target = parseInt(el.dataset.target);
 
-                // For daily type, check if we need to reset
+                // For daily type, check if we need to reset or autohide
                 if (el.dataset.type === 'daily' && target < Date.now()) {
+                    if (el.dataset.autohide === '1') {
+                        // Autohide: remove the notification from DOM
+                        const notifEl = el.closest('.nc-notification, .nc-topbar, .nc-floating');
+                        if (notifEl) notifEl.remove();
+                        return;
+                    }
                     const [hours, minutes] = (el.dataset.time || '10:00').split(':').map(Number);
                     target = getDailyTargetInTimezone(hours, minutes);
                     el.dataset.target = target;
