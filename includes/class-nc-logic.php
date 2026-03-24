@@ -34,8 +34,9 @@ class NC_Logic {
 		$valid = [];
 
 		foreach ( $query->posts as $post ) {
-			if ( self::is_valid( $post, $context ) ) {
-				$valid[] = self::prepare_for_api( $post );
+			$meta = get_post_meta( $post->ID );
+			if ( self::is_valid( $post, $context, $meta ) ) {
+				$valid[] = self::prepare_for_api( $post, $meta );
 			}
 		}
 
@@ -56,19 +57,20 @@ class NC_Logic {
 		return $valid;
 	}
 
-	private static function is_valid( $post, $context ) {
+	private static function is_valid( $post, $context, $meta ) {
 		$id = $post->ID;
+		$get = function($k) use ($meta) { return isset($meta[$k][0]) ? maybe_unserialize($meta[$k][0]) : ''; };
 
 		// 1. Time Check (using non-deprecated method)
 		$now = strtotime( current_time( 'mysql' ) );
-		$from = get_post_meta( $id, 'nc_active_from', true );
-		$to = get_post_meta( $id, 'nc_active_to', true );
+		$from = $get('nc_active_from');
+		$to = $get('nc_active_to');
 
 		if ( $from && strtotime( $from ) > $now ) return false;
 		if ( $to && strtotime( $to ) < $now ) return false;
 
         // 1.5 Day Exclusion Check
-        $excluded_days = get_post_meta( $id, 'nc_excluded_days', true );
+        $excluded_days = $get('nc_excluded_days');
         if ( is_array( $excluded_days ) && ! empty( $excluded_days ) ) {
             // date('N') returns 1 (Mon) to 7 (Sun)
             $current_day = date( 'N', $now ); 
@@ -78,17 +80,17 @@ class NC_Logic {
         }
 
         // 1.8 Countdown Visibility Check
-        if ( get_post_meta( $id, 'nc_countdown_enabled', true ) ) {
-            $autohide = get_post_meta( $id, 'nc_countdown_autohide', true );
-            $type = get_post_meta( $id, 'nc_countdown_type', true ) ?: 'date';
+        if ( $get('nc_countdown_enabled') ) {
+            $autohide = $get('nc_countdown_autohide');
+            $type = $get('nc_countdown_type') ?: 'date';
             
             // Auto-hide when expired
             if ( $autohide ) {
                 if ( $type === 'date' ) {
-                    $target = get_post_meta( $id, 'nc_countdown_date', true );
+                    $target = $get('nc_countdown_date');
                     if ( $target && strtotime( $target ) < $now ) return false;
                 } elseif ( $type === 'daily' ) {
-                    $target_time = get_post_meta( $id, 'nc_countdown_time', true ) ?: '10:00';
+                    $target_time = $get('nc_countdown_time') ?: '10:00';
                     $current_hm = date( 'H:i', $now );
                     if ( $current_hm > $target_time ) return false;
                 }
@@ -96,7 +98,7 @@ class NC_Logic {
 
             // Check Start Time (Daily only)
             if ( $type === 'daily' ) {
-                 $start_time = get_post_meta( $id, 'nc_countdown_start_time', true );
+                 $start_time = $get('nc_countdown_start_time');
                  if ( $start_time ) {
                     $current_hm = date( 'H:i', $now );
                     if ( $current_hm < $start_time ) return false;
@@ -105,21 +107,24 @@ class NC_Logic {
         }
 
 		// 2. Audience Check
-		$audience = get_post_meta( $id, 'nc_audience', true ) ?: 'all';
-		if ( $audience === 'guests' && is_user_logged_in() ) return false;
+		$audience = $get('nc_audience') ?: 'all';
+		$user_id = $context['user_id'] ?? 0;
+
+		if ( $audience === 'logged_in' && $user_id === 0 ) return false;
+		if ( $audience === 'guests' && $user_id !== 0 ) return false;
 		if ( $audience === 'administrator' ) {
 			$user = wp_get_current_user();
 			if ( ! in_array( 'administrator', (array) $user->roles, true ) ) return false;
 		}
         
         // 3. Page Rules Check
-        if ( ! self::check_page_rules( $id, $context ) ) return false;
+        if ( ! self::check_page_rules( $id, $context, $meta ) ) return false;
 
 		return true;
 	}
 
-    	private static function check_page_rules( $id, $context ) {
-		$rules = get_post_meta( $id, 'nc_rules_data', true );
+    	private static function check_page_rules( $id, $context, $meta ) {
+		$rules = isset($meta['nc_rules_data'][0]) ? maybe_unserialize($meta['nc_rules_data'][0]) : '';
         
         // If no rules defined, show everywhere
 		if ( empty( $rules ) || ! is_array( $rules ) ) return true;
@@ -148,7 +153,14 @@ class NC_Logic {
             if ( $type === 'all' ) {
                 $is_match = true;
             } elseif ( $type === 'is_front_page' ) {
-                $is_match = is_front_page();
+                $front_page_id = (int) get_option( 'page_on_front' );
+                if ( ! empty( $context['post_id'] ) && $front_page_id ) {
+                    $is_match = ( (int) $context['post_id'] === $front_page_id );
+                } elseif ( ! empty( $context['url'] ) ) {
+                    $is_match = ( untrailingslashit( $context['url'] ) === untrailingslashit( home_url() ) );
+                } else {
+                    $is_match = is_front_page();
+                }
             } elseif ( $type === 'url' && ! empty( $context['url'] ) ) {
                 $is_match = ( mb_strpos( $context['url'], $value ) !== false );
             } elseif ( $type === 'id' && ! empty( $context['post_id'] ) ) {
@@ -171,8 +183,10 @@ class NC_Logic {
         return true;
     }
 
-	private static function prepare_for_api( $post ) {
-       $meta = get_post_meta( $post->ID );
+	private static function prepare_for_api( $post, $meta = null ) {
+       if ( $meta === null ) {
+           $meta = get_post_meta( $post->ID );
+       }
        // Safely get meta helper
        $get = function($k) use ($meta) { return $meta[$k][0] ?? ''; };
        

@@ -2,3 +2,37 @@
 #postcustom {
     display: none !important;
 }
+
+/* ── List table: custom column badges ────────── */
+.nc-col-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.nc-badge-sidebar  { background: #e8f0fe; color: #1a56db; }
+.nc-badge-floating { background: #fef3c7; color: #92400e; }
+.nc-badge-topbar   { background: #d1fae5; color: #065f46; }
+
+.nc-col-status {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 12px;
+    line-height: 1.4;
+    font-weight: 500;
+}
+
+.nc-status-active    { background: #d1fae5; color: #065f46; }
+.nc-status-scheduled { background: #fef3c7; color: #92400e; }
+.nc-status-expired   { background: #fee2e2; color: #991b1b; }
+
+/* Narrower custom columns */
+.column-nc_type     { width: 160px; }
+.column-nc_status   { width: 100px; }
+.column-nc_audience { width: 100px; }
+.column-nc_views    { width: 90px; }
+.column-nc_ctr      { width: 70px; }
