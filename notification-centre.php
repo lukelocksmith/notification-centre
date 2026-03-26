@@ -3,7 +3,7 @@
  * Plugin Name: Notification Centre
  * Plugin URI:  https://agencyjnie.pl
  * Description: Advanced on-site notification center with OneSignal integration.
- * Version:     1.3.4
+ * Version:     1.3.5
  * Author:      important.is
  * Text Domain: notification-centre
  */
