@@ -57,9 +57,27 @@ class NC_Logic {
 		return $valid;
 	}
 
+	/**
+	 * Check if preview mode is active (admin + ?nc_preview=1)
+	 */
+	private static function is_preview_mode() {
+		static $preview = null;
+		if ( $preview === null ) {
+			$preview = ! empty( $_GET['nc_preview'] ) && current_user_can( 'manage_options' );
+		}
+		return $preview;
+	}
+
 	private static function is_valid( $post, $context, $meta ) {
 		$id = $post->ID;
 		$get = function($k) use ($meta) { return isset($meta[$k][0]) ? maybe_unserialize($meta[$k][0]) : ''; };
+
+		// Preview mode: skip time, day, and countdown checks (admin only)
+		if ( self::is_preview_mode() ) {
+			// Still check page rules so you see what shows on this specific page
+			if ( ! self::check_page_rules( $id, $context, $meta ) ) return false;
+			return true;
+		}
 
 		// 1. Time Check (using non-deprecated method)
 		$now = strtotime( current_time( 'mysql' ) );
