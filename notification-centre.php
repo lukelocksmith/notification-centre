@@ -3,7 +3,7 @@
  * Plugin Name: Notification Centre
  * Plugin URI:  https://agencyjnie.pl
  * Description: Advanced on-site notification center with OneSignal integration.
- * Version:     1.3.5
+ * Version:     1.4.0
  * Author:      important.is
  * Text Domain: notification-centre
  */
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define Constants
-define( 'NC_VERSION', '1.3.3' );
+define( 'NC_VERSION', '1.4.0' );
 define( 'NC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -239,10 +239,32 @@ class Notification_Centre {
             'strategy' => 'defer'
         ] );
 
+        // Inline CPT notifications — eliminates AJAX call for anonymous users
+        // Logged-in users fall back to AJAX (LSCache serves same HTML to all anons,
+        // but logged-in users need user-specific audience filtering)
+        $user_id = get_current_user_id();
+        $inline_notifications = null;
+        if ( $user_id === 0 ) {
+            $request_path = wp_parse_url( $_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH ) ?: '/';
+            $inline_context = [
+                'url'     => esc_url_raw( home_url( $request_path ) ),
+                'post_id' => get_queried_object_id(),
+                'user_id' => 0,
+            ];
+            $version   = get_option( 'nc_cache_version', 0 );
+            $cache_key = 'nc_api_' . md5( $version . wp_json_encode( $inline_context ) );
+            $inline_notifications = get_transient( $cache_key );
+            if ( $inline_notifications === false ) {
+                $inline_notifications = NC_Logic::get_valid_notifications( $inline_context );
+                set_transient( $cache_key, $inline_notifications, 300 );
+            }
+        }
+
 		wp_localize_script( 'nc-main', 'ncData', [
 			'root' => esc_url_raw( rest_url() ),
 			'nonce' => wp_create_nonce( 'wp_rest' ),
-            'userId' => get_current_user_id(),
+            'userId' => $user_id,
+            'notifications' => $inline_notifications,
             'panelPosition' => 'right',
             'displayMode' => $options['nc_display_mode'] ?: 'drawer', 
             'drawerWidth' => $drawer_width,
@@ -377,3 +399,14 @@ Notification_Centre::get_instance();
 // Create tables on activation
 register_activation_hook( __FILE__, [ 'NC_Analytics', 'create_table' ] );
 register_activation_hook( __FILE__, [ 'NC_Woo_Notifications', 'create_table' ] );
+
+// Schedule hourly cache purge for time-based notification expiry
+register_activation_hook( __FILE__, function() {
+	if ( ! wp_next_scheduled( 'nc_hourly_cache_purge' ) ) {
+		wp_schedule_event( time(), 'hourly', 'nc_hourly_cache_purge' );
+	}
+} );
+add_action( 'nc_hourly_cache_purge', function() {
+	update_option( 'nc_cache_version', time(), false );
+	do_action( 'litespeed_purge_all' );
+} );

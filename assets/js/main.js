@@ -392,18 +392,17 @@
     }
 
     function fetchNotifications() {
-        // Prepare context params
-        const params = new URLSearchParams({
-            url: window.location.href,
-            pid: getPostId() // helper needed
-        });
+        // Use inline data if available (rendered by PHP, cached by LSCache with page)
+        const cptPromise = (ncData.notifications && Array.isArray(ncData.notifications))
+            ? Promise.resolve(ncData.notifications)
+            : fetch(apiRoot + 'notifications?' + new URLSearchParams({
+                url: window.location.href,
+                pid: getPostId()
+            }).toString(), {
+                headers: { 'X-WP-Nonce': ncData.nonce }
+            }).then(res => res.json());
 
-        // Fetch CPT notifications (include nonce so WP can identify logged-in user)
-        const cptPromise = fetch(apiRoot + 'notifications?' + params.toString(), {
-            headers: { 'X-WP-Nonce': ncData.nonce }
-        }).then(res => res.json());
-
-        // Fetch user notifications if logged in
+        // User notifications still need AJAX (per-user, can't be cached with page)
         const userPromise = (ncData.userId > 0)
             ? fetch(apiRoot + 'user-notifications', {
                 headers: { 'X-WP-Nonce': ncData.nonce }

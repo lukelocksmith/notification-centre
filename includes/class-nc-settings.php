@@ -13,8 +13,11 @@ class NC_Settings {
 		// Invalidate options cache when any nc_ option is updated
 		add_action( 'update_option', [ $this, 'maybe_invalidate_cache' ], 10, 1 );
 
-		// Invalidate notification caches when a notification is saved
+		// Invalidate notification caches when a notification is saved, trashed or deleted
 		add_action( 'save_post_nc_notification', [ $this, 'invalidate_notification_caches' ] );
+		add_action( 'trashed_post', [ $this, 'maybe_invalidate_on_delete' ] );
+		add_action( 'deleted_post', [ $this, 'maybe_invalidate_on_delete' ] );
+		add_action( 'untrashed_post', [ $this, 'maybe_invalidate_on_delete' ] );
 	}
 	
 	/**
@@ -32,6 +35,18 @@ class NC_Settings {
 	public function invalidate_notification_caches() {
 		delete_transient( 'nc_fluentform_ids' );
 		update_option( 'nc_cache_version', time(), false );
+
+		// Purge LSCache — inline notifications are baked into cached HTML
+		do_action( 'litespeed_purge_all' );
+	}
+
+	/**
+	 * Invalidate caches only if the deleted/trashed post is a notification
+	 */
+	public function maybe_invalidate_on_delete( $post_id ) {
+		if ( get_post_type( $post_id ) === 'nc_notification' ) {
+			$this->invalidate_notification_caches();
+		}
 	}
 
 	public function add_settings_page() {
