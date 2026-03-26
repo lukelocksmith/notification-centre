@@ -117,6 +117,51 @@ class NC_Rest_Api {
 		return rest_ensure_response( [ 'success' => (bool) $result ] );
 	}
 
+	/**
+	 * Strip UTM and tracking parameters from URL for cache key purposes.
+	 */
+	private function strip_tracking_params( $url ) {
+		if ( empty( $url ) ) {
+			return $url;
+		}
+
+		$parsed = wp_parse_url( $url );
+		if ( empty( $parsed['query'] ) ) {
+			return $url;
+		}
+
+		parse_str( $parsed['query'], $query_params );
+
+		$tracking_params = [
+			'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+			'fbclid', 'gclid', 'ttclid', 'gad_source', 'gad_campaignid',
+			'_ga', '_gl', 'mc_cid', 'mc_eid',
+		];
+		foreach ( $tracking_params as $param ) {
+			unset( $query_params[ $param ] );
+		}
+
+		// Rebuild URL without tracking params
+		$clean_url = '';
+		if ( ! empty( $parsed['scheme'] ) && ! empty( $parsed['host'] ) ) {
+			$clean_url .= $parsed['scheme'] . '://' . $parsed['host'];
+		}
+		if ( ! empty( $parsed['path'] ) ) {
+			$clean_url .= $parsed['path'];
+		}
+
+		// If we couldn't parse scheme/host/path, return original URL minus query
+		if ( empty( $clean_url ) ) {
+			return strtok( $url, '?' );
+		}
+
+		if ( $query_params ) {
+			$clean_url .= '?' . http_build_query( $query_params );
+		}
+
+		return $clean_url;
+	}
+
 	public function get_items( $request ) {
         // Nonce-based auth may fail when HTML is cached (stale nonce).
         // Fall back to direct cookie validation for GET requests — safe for read-only data.
@@ -127,20 +172,30 @@ class NC_Rest_Api {
             }
         }
 
+        $raw_url = esc_url_raw( $request->get_param('url') ?: '' );
+        $user_id = get_current_user_id();
+
         $context = [
-            'url' => esc_url_raw( $request->get_param('url') ?: '' ),
+            'url' => $this->strip_tracking_params( $raw_url ),
             'post_id' => absint( $request->get_param('pid') ?: 0 ),
-            'user_id' => get_current_user_id()
+            'user_id' => $user_id
         ];
 
-        // Short transient cache (60s) keyed by context hash
+        // Transient cache (5 min) keyed by context hash
         $version = get_option( 'nc_cache_version', 0 );
         $cache_key = 'nc_api_' . md5( $version . wp_json_encode( $context ) );
         $notifications = get_transient( $cache_key );
 
         if ( $notifications === false ) {
             $notifications = NC_Logic::get_valid_notifications( $context );
-            set_transient( $cache_key, $notifications, 60 );
+            set_transient( $cache_key, $notifications, 300 );
+        }
+
+        // Allow LSCache to cache responses for anonymous users only
+        if ( $user_id === 0 ) {
+            header( 'X-LiteSpeed-Cache-Control: public, max-age=300' );
+        } else {
+            header( 'X-LiteSpeed-Cache-Control: no-cache' );
         }
 
 		return rest_ensure_response( $notifications );
