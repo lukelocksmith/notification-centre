@@ -1297,7 +1297,7 @@
         });
 
         // Close button - show if allowed and not permanent
-        const isPermanent = topBarItems.some(n => n.settings.topbar_permanent === '1');
+        const isPermanent = topBarItems.some(n => !!n.settings.topbar_permanent);
         // config is already defined above
 
         if (!isPermanent && config.dismissible) {
