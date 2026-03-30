@@ -1,0 +1,31 @@
+name: Build Release ZIP
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build notification-centre.zip
+        run: |
+          mkdir -p /tmp/build/notification-centre
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='*.zip' \
+            . /tmp/build/notification-centre/
+          cd /tmp/build
+          zip -r notification-centre.zip notification-centre/
+
+      - name: Upload ZIP to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: /tmp/build/notification-centre.zip
