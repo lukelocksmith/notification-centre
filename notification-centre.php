@@ -3,7 +3,7 @@
  * Plugin Name: Notification Centre
  * Plugin URI:  https://agencyjnie.pl
  * Description: Advanced on-site notification center with OneSignal integration.
- * Version:     1.4.1
+ * Version:     1.4.2
  * Author:      important.is
  * Text Domain: notification-centre
  */
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define Constants
-define( 'NC_VERSION', '1.4.1' );
+define( 'NC_VERSION', '1.4.2' );
 define( 'NC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -309,22 +309,63 @@ class Notification_Centre {
 
         if ( $options === false ) {
             global $wpdb;
-            
+
             // Get all nc_ options in single query
             $results = $wpdb->get_results(
                 "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE 'nc_%'",
                 OBJECT
             );
-            
+
             $options = [];
             foreach ( $results as $row ) {
                 $options[ $row->option_name ] = $row->option_value;
             }
-            
+
             set_transient( $cache_key, $options, HOUR_IN_SECONDS );
         }
-        
-        return $options;
+
+        // Ensure all expected keys exist to avoid PHP 8 "Undefined array key" notices
+        static $defaults = [
+            'nc_radius_type'           => 'rounded',
+            'nc_radius_custom'         => '20',
+            'nc_toast_position'        => 'top-right',
+            'nc_global_bg'             => '#ffffff',
+            'nc_global_text'           => '#1d1d1f',
+            'nc_global_border'         => '#e5e5e5',
+            'nc_close_color'           => '#1d1d1f',
+            'nc_close_bg'              => 'rgba(0,0,0,0.05)',
+            'nc_close_hover_color'     => '#ff3b30',
+            'nc_close_hover_bg'        => 'rgba(0,0,0,0.1)',
+            'nc_bell_bg'               => 'transparent',
+            'nc_bell_color'            => '#000000',
+            'nc_bell_hover_bg'         => 'rgba(0,0,0,0.05)',
+            'nc_bell_hover_color'      => '#007AFF',
+            'nc_badge_bg'              => '#ff3b30',
+            'nc_badge_text'            => '#ffffff',
+            'nc_global_btn_bg'         => '#007AFF',
+            'nc_global_btn_text'       => '#ffffff',
+            'nc_global_btn_hover_bg'   => '#0056b3',
+            'nc_global_btn_hover_text' => '#ffffff',
+            'nc_topbar_bg'             => '#007AFF',
+            'nc_topbar_text'           => '#ffffff',
+            'nc_topbar_btn_bg'         => '#ffffff',
+            'nc_topbar_btn_text'       => '#007AFF',
+            'nc_countdown_bg'          => 'transparent',
+            'nc_countdown_value_color' => '#1d1d1f',
+            'nc_countdown_unit_color'  => '#666666',
+            'nc_drawer_width'          => '400',
+            'nc_display_mode'          => 'drawer',
+            'nc_badge_type'            => 'count',
+            'nc_topbar_rotation_speed' => '5',
+            'nc_countdown_show_units'  => '1',
+            'nc_enable_sound'          => '',
+            'nc_disable_topbar'        => '',
+            'nc_topbar_dismissible'    => '',
+            'nc_topbar_sticky'         => '',
+            'nc_debug_mode'            => '',
+        ];
+
+        return array_merge( $defaults, $options );
     }
     
     public function init() {
