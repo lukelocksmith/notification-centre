@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.5] - 2026-03-30
+### Added
+- **PHP logic test suite** (`tests/php/run-tests.php`) — 42 assertions via `ddev wp eval-file` covering time restrictions, day exclusions, audience, page rules, countdown visibility, API response types and pinned sort order
+- **Playwright E2E test suite** (`tests/e2e/nc.spec.js`) — 35 browser-level tests in 10 groups; setup uses single `wp eval` per test for fast execution (~1s setup vs 24s with individual WP-CLI calls)
+
+## [1.4.4] - 2026-03-30
+### Fixed
+- GitHub Actions release workflow now correctly attaches `notification-centre.zip` to manually triggered (`workflow_dispatch`) releases
+
 ## [1.4.3] - 2026-03-30
 ### Fixed
 - Topbar **permanent** option now correctly hides the X button (was a boolean/string type mismatch in JS — API returned `true`, JS compared `=== '1'`)
