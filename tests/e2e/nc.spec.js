@@ -140,9 +140,7 @@ test.describe('Topbar', () => {
         }
     });
 
-    test('non-permanent topbar shows close button (when global dismissible ON)', async ({ page }) => {
-        // Make sure the global dismissible option is on for this test
-        wp('option', 'update', 'nc_topbar_dismissible', '1');
+    test('non-permanent topbar shows close button', async ({ page }) => {
         const id = createNotif({ nc_show_as_topbar: '1', nc_topbar_permanent: '' });
         try {
             await page.goto('/');
@@ -150,22 +148,19 @@ test.describe('Topbar', () => {
             await expect(page.locator('.nc-topbar .nc-topbar-close')).toBeVisible();
         } finally {
             deleteNotif(id);
-            wp('option', 'update', 'nc_topbar_dismissible', '');
         }
     });
 
-    test('clicking close hides the topbar', async ({ page }) => {
-        wp('option', 'update', 'nc_topbar_dismissible', '1');
+    test('clicking close dismisses the non-permanent item', async ({ page }) => {
         const id = createNotif({ nc_show_as_topbar: '1', nc_topbar_permanent: '' });
         try {
             await page.goto('/');
-            const topbar = page.locator('.nc-topbar');
-            await expect(topbar).toBeVisible({ timeout: 8_000 });
+            await expect(page.locator('.nc-topbar')).toBeVisible({ timeout: 8_000 });
             await page.locator('.nc-topbar .nc-topbar-close').click();
-            await expect(topbar).not.toBeVisible();
+            // After dismissal, dismissed item should no longer be in topbar DOM
+            await expect(page.locator(`.nc-topbar-item[data-id="${id}"]`)).not.toBeVisible({ timeout: 5_000 });
         } finally {
             deleteNotif(id);
-            wp('option', 'update', 'nc_topbar_dismissible', '');
         }
     });
 

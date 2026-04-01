@@ -3,7 +3,7 @@
  * Plugin Name: Notification Centre
  * Plugin URI:  https://agencyjnie.pl
  * Description: Advanced on-site notification center with OneSignal integration.
- * Version:     1.4.5
+ * Version:     1.4.6
  * Author:      important.is
  * Text Domain: notification-centre
  */
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define Constants
-define( 'NC_VERSION', '1.4.5' );
+define( 'NC_VERSION', '1.4.6' );
 define( 'NC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -280,7 +280,6 @@ class Notification_Centre {
             ],
             'topBar' => [
                 'disabled' => ($options['nc_disable_topbar'] ?? '') === '1',
-                'dismissible' => $options['nc_topbar_dismissible'] === '1',
                 'sticky' => $options['nc_topbar_sticky'] === '1',
                 'rotationSpeed' => (int)($options['nc_topbar_rotation_speed'] ?: 5) * 1000,
                 'bg' => $nc_topbar_bg,
@@ -360,7 +359,6 @@ class Notification_Centre {
             'nc_countdown_show_units'  => '1',
             'nc_enable_sound'          => '',
             'nc_disable_topbar'        => '',
-            'nc_topbar_dismissible'    => '',
             'nc_topbar_sticky'         => '',
             'nc_debug_mode'            => '',
         ];

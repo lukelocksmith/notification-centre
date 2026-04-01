@@ -83,7 +83,7 @@ class NC_Settings {
 		
 		// Checkbox/Boolean fields - sanitize as 0/1
 		$bool_settings = [
-			'nc_enable_sound', 'nc_disable_topbar', 'nc_topbar_dismissible',
+			'nc_enable_sound', 'nc_disable_topbar',
 			'nc_topbar_sticky', 'nc_countdown_show_units', 'nc_debug_mode',
 			// WooCommerce notification toggles
 			'nc_woo_enabled', 'nc_woo_order_processing', 'nc_woo_order_completed',
@@ -376,15 +376,6 @@ class NC_Settings {
                         <th scope="row">Tekst przycisku CTA</th>
                         <td>
                             <input type="text" name="nc_topbar_btn_text" value="<?php echo esc_attr( get_option( 'nc_topbar_btn_text', '#007AFF' ) ); ?>" class="nc-color-field" data-default-color="#007AFF">
-                        </td>
-                    </tr>
-                    <tr valign="top">
-                        <th scope="row">Możliwość zamknięcia</th>
-                        <td>
-                            <label>
-                                <input type="checkbox" name="nc_topbar_dismissible" value="1" <?php checked( get_option( 'nc_topbar_dismissible' ), '1' ); ?>>
-                                Pokaż przycisk zamknięcia (X)
-                            </label>
                         </td>
                     </tr>
                     <tr valign="top">

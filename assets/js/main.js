@@ -1296,11 +1296,10 @@
             html += '</div>';
         });
 
-        // Close button - show if allowed and not permanent
-        const isPermanent = topBarItems.some(n => !!n.settings.topbar_permanent);
-        // config is already defined above
+        // Close button - show if at least one topbar item is not permanent
+        const allPermanent = topBarItems.every(n => !!n.settings.topbar_permanent);
 
-        if (!isPermanent && config.dismissible) {
+        if (!allPermanent) {
             html += '<button class="nc-topbar-close" title="Zamknij">&times;</button>';
         }
 
@@ -1429,16 +1428,16 @@
     }
 
     function dismissTopBar() {
-        // Dismiss all topbar items in ALL stores
+        // Dismiss only non-permanent topbar items
         topBarItems.forEach(n => {
-            trackEvent(n.id, 'dismiss');
-            dismissEverywhere(n.id);
+            if (!n.settings.topbar_permanent) {
+                trackEvent(n.id, 'dismiss');
+                dismissEverywhere(n.id);
+            }
         });
 
-        // Hide the bar
-        topBarContainer.style.display = 'none';
-        document.body.classList.remove('nc-topbar-active');
-        stopTopBarRotation();
+        // Re-render topbar (permanent items may still be visible)
+        renderTopBar();
     }
 
     // ============================================

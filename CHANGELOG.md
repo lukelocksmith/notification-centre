@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.6] - 2026-04-01
+### Fixed
+- **Topbar close button (X) not appearing** when notification is not marked as permanent — caused by a redundant global `nc_topbar_dismissible` setting that defaulted to off; removed entirely in favour of per-notification `nc_topbar_permanent` flag
+- Topbar with mixed permanent/non-permanent items now shows X and dismisses only non-permanent items (previously `some()` logic hid X if any item was permanent)
+
+### Removed
+- Global plugin setting **"Możliwość zamknięcia"** (`nc_topbar_dismissible`) from Top Bar settings page — the per-notification "Bez możliwości zamknięcia (Permanentne)" checkbox is the single control
+
 ## [1.4.5] - 2026-03-30
 ### Added
 - **PHP logic test suite** (`tests/php/run-tests.php`) — 42 assertions via `ddev wp eval-file` covering time restrictions, day exclusions, audience, page rules, countdown visibility, API response types and pinned sort order
