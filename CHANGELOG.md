@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.8] - 2026-04-09
+### Fixed
+- **uninstall.php no longer deletes plugin options** — prevents data loss when user installs new version via ZIP upload alongside old version and then deletes old copy
+- **Expired transient bloat** — daily cron job now cleans up old `nc_api_*` transients from `wp_options` (80 stale rows cleared on first run)
+
+### Changed
+- **CSS loading strategy** — `style.css` now loads as non-render-blocking (`media="print" onload="this.media='all'"`) for better First Paint
+- **Admin assets scope** — `nc-admin.js` and `nc-admin.css` now only load on NC notification screens (post edit, list, settings, analytics) instead of all wp-admin pages
+
 ## [1.4.7] - 2026-04-09
 ### Fixed
 - **Plugin loading in page builder editors** (Bricks, Elementor, Brizy, Oxygen) — NC scripts, drawer and topbar no longer render in editor iframe contexts; prevents conflict with WP Grid Builder patching `fetch()`

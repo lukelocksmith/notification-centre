@@ -3,7 +3,7 @@
  * Plugin Name: Notification Centre
  * Plugin URI:  https://agencyjnie.pl
  * Description: Advanced on-site notification center with OneSignal integration.
- * Version:     1.4.7
+ * Version:     1.4.8
  * Author:      important.is
  * Text Domain: notification-centre
  */
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define Constants
-define( 'NC_VERSION', '1.4.7' );
+define( 'NC_VERSION', '1.4.8' );
 define( 'NC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -79,8 +79,15 @@ class Notification_Centre {
     public function enqueue_assets() {
         if ( $this->should_skip_frontend() ) return;
 
-        // Front-end assets
-		wp_enqueue_style( 'nc-style', NC_PLUGIN_URL . 'assets/css/style.css', [], NC_VERSION );
+        // Front-end assets (non-render-blocking CSS)
+		wp_enqueue_style( 'nc-style', NC_PLUGIN_URL . 'assets/css/style.css', [], NC_VERSION, 'print' );
+        // Switch media to 'all' on load so CSS applies without blocking render
+        add_filter( 'style_loader_tag', function( $html, $handle ) {
+            if ( $handle === 'nc-style' ) {
+                return str_replace( "media='print'", "media='print' onload=\"this.media='all'\"", $html );
+            }
+            return $html;
+        }, 10, 2 );
 
         // Check for Fluent Forms in active notifications and enqueue necessary assets
         if ( function_exists( 'fluentFormMix' ) ) {
@@ -388,12 +395,23 @@ class Notification_Centre {
             new NC_Woo_Notifications();
         }
 
-        // Admin assets
-        add_action('admin_enqueue_scripts', function() {
+        // Cleanup expired API transients (prevents wp_options bloat)
+        add_action( 'nc_cleanup_expired_transients', [ $this, 'cleanup_expired_transients' ] );
+        if ( ! wp_next_scheduled( 'nc_cleanup_expired_transients' ) ) {
+            wp_schedule_event( time(), 'daily', 'nc_cleanup_expired_transients' );
+        }
+
+        // Admin assets — only on NC screens (post type + settings)
+        add_action('admin_enqueue_scripts', function( $hook ) {
+             $screen = get_current_screen();
+             if ( ! $screen ) return;
+             $is_nc = $screen->post_type === 'nc_notification'
+                   || ( $screen->id ?? '' ) === 'nc_notification_page_nc-settings'
+                   || ( $screen->id ?? '' ) === 'nc_notification_page_nc-analytics';
+             if ( ! $is_nc ) return;
+
              wp_enqueue_media();
              wp_enqueue_style( 'nc-admin', NC_PLUGIN_URL . 'assets/css/admin.css', [], NC_VERSION );
-             
-             // Enqueue WP Color Picker
              wp_enqueue_style( 'wp-color-picker' );
              wp_enqueue_script( 'nc-admin-js', NC_PLUGIN_URL . 'assets/js/admin.js', [ 'wp-color-picker' ], NC_VERSION, true );
         });
@@ -441,6 +459,18 @@ class Notification_Centre {
         ?>
         <div id="nc-topbar" class="nc-topbar" role="banner" aria-label="Ogłoszenie" style="display:none;"></div>
         <?php
+    }
+
+    /**
+     * Remove expired nc_api_* transients from wp_options to prevent bloat.
+     */
+    public function cleanup_expired_transients() {
+        global $wpdb;
+        $wpdb->query(
+            "DELETE a, b FROM {$wpdb->options} a
+             LEFT JOIN {$wpdb->options} b ON b.option_name = REPLACE(a.option_name, '_timeout_', '_')
+             WHERE a.option_name LIKE '_transient_timeout_nc_api_%' AND a.option_value < UNIX_TIMESTAMP()"
+        );
     }
 }
 
