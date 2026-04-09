@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.4.7] - 2026-04-09
+### Fixed
+- **Plugin loading in page builder editors** (Bricks, Elementor, Brizy, Oxygen) — NC scripts, drawer and topbar no longer render in editor iframe contexts; prevents conflict with WP Grid Builder patching `fetch()`
+- Added `is_admin()` guard as defensive check — `wp_enqueue_scripts` shouldn't fire in admin, but guard prevents edge cases
+
 ## [1.4.6] - 2026-04-01
 ### Fixed
 - **Topbar close button (X) not appearing** when notification is not marked as permanent — caused by a redundant global `nc_topbar_dismissible` setting that defaulted to off; removed entirely in favour of per-notification `nc_topbar_permanent` flag

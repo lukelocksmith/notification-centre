@@ -3,7 +3,7 @@
  * Plugin Name: Notification Centre
  * Plugin URI:  https://agencyjnie.pl
  * Description: Advanced on-site notification center with OneSignal integration.
- * Version:     1.4.6
+ * Version:     1.4.7
  * Author:      important.is
  * Text Domain: notification-centre
  */
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define Constants
-define( 'NC_VERSION', '1.4.6' );
+define( 'NC_VERSION', '1.4.7' );
 define( 'NC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -69,7 +69,16 @@ class Notification_Centre {
         add_action( 'wp_body_open', [ $this, 'render_topbar' ] );
 	}
 
+    private function should_skip_frontend() {
+        if ( is_admin() ) return true;
+        // Page builder editor contexts render frontend in iframe but are not visitor-facing
+        if ( isset( $_GET['bricks'] ) || isset( $_GET['elementor-preview'] ) || isset( $_GET['brizy-edit'] ) || isset( $_GET['ct_builder'] ) ) return true;
+        return false;
+    }
+
     public function enqueue_assets() {
+        if ( $this->should_skip_frontend() ) return;
+
         // Front-end assets
 		wp_enqueue_style( 'nc-style', NC_PLUGIN_URL . 'assets/css/style.css', [], NC_VERSION );
 
@@ -412,6 +421,7 @@ class Notification_Centre {
      * Render drawer in footer to avoid wpautop issues
      */
     public function render_drawer_in_footer() {
+        if ( $this->should_skip_frontend() ) return;
         ?>
         <div id="nc-drawer" class="nc-drawer" role="dialog" aria-modal="true" aria-label="Panel powiadomień">
             <div class="nc-drawer-header"><h3>Powiadomienia</h3><button class="nc-close-drawer" aria-label="Zamknij">&times;</button></div>
@@ -427,6 +437,7 @@ class Notification_Centre {
      * Render Top Bar at the beginning of body
      */
     public function render_topbar() {
+        if ( $this->should_skip_frontend() ) return;
         ?>
         <div id="nc-topbar" class="nc-topbar" role="banner" aria-label="Ogłoszenie" style="display:none;"></div>
         <?php
