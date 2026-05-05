@@ -225,6 +225,7 @@ class NC_Logic {
            'cta_label' => $get('nc_cta_label'),
            'cta_url' => $get('nc_cta_url'),
            'icon' => $get('nc_icon'),
+           'image_url' => ( $img_id = (int) $get('nc_image_id') ) ? ( wp_get_attachment_image_url( $img_id, 'large' ) ?: '' ) : '',
            'type' => 'info',
            'date' => get_the_date( 'Y-m-d H:i', $post ),
            'settings' => [

@@ -104,7 +104,7 @@ class NC_Post_Type {
                 'utm_medium' => 'notification-centre'
             ], $url );
             
-            wp_redirect( $url, 301 );
+            wp_safe_redirect( esc_url_raw( $url ), 302 );
             exit;
         }
     }

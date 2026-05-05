@@ -429,9 +429,9 @@ test.describe('Page Rules', () => {
 
     test('show URL match → visible on matching path', async ({ page }) => {
         const id = createNotif();
-        setMetaEval(id, 'nc_rules_data', `array(array('mode'=>'show','type'=>'url','value'=>'/sklep/'))`);
+        setMetaEval(id, 'nc_rules_data', `array(array('mode'=>'show','type'=>'url','value'=>'/shop/'))`);
         try {
-            await page.goto('/sklep/');
+            await page.goto('/shop/');
             await page.waitForTimeout(3_000);
             expect(await getNotifData(page, id)).not.toBeNull();
         } finally {
@@ -441,7 +441,7 @@ test.describe('Page Rules', () => {
 
     test('show URL match → hidden on non-matching path', async ({ page }) => {
         const id = createNotif();
-        setMetaEval(id, 'nc_rules_data', `array(array('mode'=>'show','type'=>'url','value'=>'/sklep/'))`);
+        setMetaEval(id, 'nc_rules_data', `array(array('mode'=>'show','type'=>'url','value'=>'/shop/'))`);
         try {
             await page.goto('/blog/');
             await page.waitForTimeout(3_000);
@@ -453,9 +453,9 @@ test.describe('Page Rules', () => {
 
     test('hide URL match → hidden on matching path', async ({ page }) => {
         const id = createNotif();
-        setMetaEval(id, 'nc_rules_data', `array(array('mode'=>'hide','type'=>'url','value'=>'/koszyk/'))`);
+        setMetaEval(id, 'nc_rules_data', `array(array('mode'=>'hide','type'=>'url','value'=>'/cart/'))`);
         try {
-            await page.goto('/koszyk/');
+            await page.goto('/cart/');
             await page.waitForTimeout(3_000);
             expect(await getNotifData(page, id)).toBeNull();
         } finally {
@@ -465,7 +465,7 @@ test.describe('Page Rules', () => {
 
     test('hide URL no match → visible on other path', async ({ page }) => {
         const id = createNotif();
-        setMetaEval(id, 'nc_rules_data', `array(array('mode'=>'hide','type'=>'url','value'=>'/koszyk/'))`);
+        setMetaEval(id, 'nc_rules_data', `array(array('mode'=>'hide','type'=>'url','value'=>'/cart/'))`);
         try {
             await page.goto('/');
             await page.waitForTimeout(3_000);

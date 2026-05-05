@@ -236,6 +236,131 @@ nc_cleanup( $created_ids );
 
 
 // ============================================================
+echo "\n\033[1m8. Daily Happy Hours Window\033[0m\n";
+
+// start in past + end in future + autohide → visible (inside window)
+$start_past_hm  = date( 'H:i', $now_ts - 3600 );
+$end_future_hm  = date( 'H:i', $now_ts + 3600 );
+$end_past_hm    = date( 'H:i', $now_ts - 1800 );
+
+$id = nc_make( $created_ids, [
+    'nc_countdown_enabled'    => '1',
+    'nc_countdown_type'       => 'daily',
+    'nc_countdown_start_time' => $start_past_hm,
+    'nc_countdown_time'       => $end_future_hm,
+    'nc_countdown_autohide'   => '1',
+] );
+nc_assert( $results, 'daily window: inside (start past, end future + autohide) → visible',
+    nc_find( nc_query( $created_ids ), $id ) !== null );
+nc_cleanup( $created_ids );
+
+// start in past + end in past + autohide → hidden (window already closed)
+$id = nc_make( $created_ids, [
+    'nc_countdown_enabled'    => '1',
+    'nc_countdown_type'       => 'daily',
+    'nc_countdown_start_time' => $start_past_hm,
+    'nc_countdown_time'       => $end_past_hm,
+    'nc_countdown_autohide'   => '1',
+] );
+nc_assert( $results, 'daily window: past end + autohide → hidden',
+    nc_find( nc_query( $created_ids ), $id ) === null );
+nc_cleanup( $created_ids );
+
+// start in past + end in past + no autohide → visible (window closed but still shown)
+$id = nc_make( $created_ids, [
+    'nc_countdown_enabled'    => '1',
+    'nc_countdown_type'       => 'daily',
+    'nc_countdown_start_time' => $start_past_hm,
+    'nc_countdown_time'       => $end_past_hm,
+    'nc_countdown_autohide'   => '',
+] );
+nc_assert( $results, 'daily window: past end + no autohide → visible',
+    nc_find( nc_query( $created_ids ), $id ) !== null );
+nc_cleanup( $created_ids );
+
+// start in future + end in future + autohide → hidden (window not started)
+$start_future_hm = date( 'H:i', $now_ts + 3600 );
+$end_far_hm      = date( 'H:i', $now_ts + 7200 );
+
+$id = nc_make( $created_ids, [
+    'nc_countdown_enabled'    => '1',
+    'nc_countdown_type'       => 'daily',
+    'nc_countdown_start_time' => $start_future_hm,
+    'nc_countdown_time'       => $end_far_hm,
+    'nc_countdown_autohide'   => '1',
+] );
+nc_assert( $results, 'daily window: start future → hidden (not started yet)',
+    nc_find( nc_query( $created_ids ), $id ) === null );
+nc_cleanup( $created_ids );
+
+// no start_time set, end in future + autohide → visible (no lower bound)
+$id = nc_make( $created_ids, [
+    'nc_countdown_enabled'    => '1',
+    'nc_countdown_type'       => 'daily',
+    'nc_countdown_start_time' => '',
+    'nc_countdown_time'       => $end_future_hm,
+    'nc_countdown_autohide'   => '1',
+] );
+nc_assert( $results, 'daily: no start_time, end future + autohide → visible',
+    nc_find( nc_query( $created_ids ), $id ) !== null );
+nc_cleanup( $created_ids );
+
+
+// ============================================================
+echo "\n\033[1m9. Repeat Value in API Response\033[0m\n";
+
+$id = nc_make( $created_ids, [ 'nc_repeat_value' => '3', 'nc_repeat_unit' => 'days' ] );
+$n  = nc_find( nc_query( $created_ids ), $id );
+nc_assert( $results, 'repeat_val returned as int 3',      $n && $n['settings']['repeat_val'] === 3 );
+nc_assert( $results, 'repeat_unit returned as "days"',    $n && $n['settings']['repeat_unit'] === 'days' );
+nc_cleanup( $created_ids );
+
+$id = nc_make( $created_ids, [ 'nc_repeat_value' => '0', 'nc_repeat_unit' => 'days' ] );
+$n  = nc_find( nc_query( $created_ids ), $id );
+nc_assert( $results, 'repeat_val 0 → int 0 (never re-show)', $n && $n['settings']['repeat_val'] === 0 );
+nc_cleanup( $created_ids );
+
+$id = nc_make( $created_ids, [ 'nc_repeat_value' => '', 'nc_repeat_unit' => '' ] );
+$n  = nc_find( nc_query( $created_ids ), $id );
+nc_assert( $results, 'repeat_val empty → int 0',    $n && $n['settings']['repeat_val'] === 0 );
+nc_assert( $results, 'repeat_unit empty → "days"',  $n && $n['settings']['repeat_unit'] === 'days' );
+nc_cleanup( $created_ids );
+
+
+// ============================================================
+echo "\n\033[1m10. Image URL in API Response\033[0m\n";
+
+// No image set → image_url is empty string
+$id = nc_make( $created_ids, [] );
+$n  = nc_find( nc_query( $created_ids ), $id );
+nc_assert( $results, 'image_url field present in response',     $n && array_key_exists( 'image_url', $n ) );
+nc_assert( $results, 'image_url is empty when no image set',    $n && $n['image_url'] === '' );
+nc_cleanup( $created_ids );
+
+// Invalid attachment ID → image_url is empty string (wp_get_attachment_image_url returns false)
+$id = nc_make( $created_ids, [ 'nc_image_id' => '999999' ] );
+$n  = nc_find( nc_query( $created_ids ), $id );
+nc_assert( $results, 'image_url empty for invalid attachment ID', $n && $n['image_url'] === '' );
+nc_cleanup( $created_ids );
+
+
+// ============================================================
+echo "\n\033[1m11. All Days Excluded Edge Case\033[0m\n";
+
+$id = nc_make( $created_ids, [ 'nc_excluded_days' => [ '1','2','3','4','5','6','7' ] ] );
+nc_assert( $results, 'all 7 days excluded → hidden today',
+    nc_find( nc_query( $created_ids ), $id ) === null );
+nc_cleanup( $created_ids );
+
+// Only today's day in exclusions (different test approach — multi-value array)
+$today = (string) date( 'N', $now_ts );
+$id = nc_make( $created_ids, [ 'nc_excluded_days' => [ $today ] ] );
+nc_assert( $results, 'only today excluded → hidden',
+    nc_find( nc_query( $created_ids ), $id ) === null );
+nc_cleanup( $created_ids );
+
+
+// ============================================================
 $total = $results['passed'] + $results['failed'];
 echo "\n\033[1m────────────────────────────────────────────\033[0m\n";
 printf( "\033[1mResults: %d/%d passed\033[0m", $results['passed'], $total );

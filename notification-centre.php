@@ -306,7 +306,6 @@ class Notification_Centre {
             'cacheVersion' => get_option('nc_cache_version', '0'),
             'debugMode' => $options['nc_debug_mode'] === '1',
             'timezone' => wp_timezone_string(),
-            'serverTime' => time(),
             'countdown' => [
                 'showUnits' => ($options['nc_countdown_show_units'] ?: '1') === '1',
             ],

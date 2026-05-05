@@ -18,7 +18,7 @@ jQuery(document).ready(function ($) {
         }
     }
 
-    // Image Upload Logic
+    // Icon Upload Logic
     $('.nc-upload-icon-btn').click(function (e) {
         e.preventDefault();
         var image = wp.media({
@@ -32,5 +32,32 @@ jQuery(document).ready(function ($) {
                 var image_url = uploaded_image.toJSON().url;
                 $('#nc_icon_field').val(image_url);
             });
+    });
+
+    // Image Upload Logic
+    $('.nc-upload-image-btn').click(function (e) {
+        e.preventDefault();
+        var frame = wp.media({
+            title: 'Wybierz obrazek powiadomienia',
+            library: { type: 'image' },
+            button: { text: 'Użyj tego obrazka' },
+            multiple: false
+        }).open()
+            .on('select', function () {
+                var attachment = frame.state().get('selection').first().toJSON();
+                $('#nc_image_id_field').val(attachment.id);
+                $('#nc-image-preview img').attr('src', attachment.url);
+                $('#nc-image-preview').show();
+                $('.nc-remove-image-btn').show();
+            });
+    });
+
+    // Image Remove Logic
+    $(document).on('click', '.nc-remove-image-btn', function (e) {
+        e.preventDefault();
+        $('#nc_image_id_field').val('');
+        $('#nc-image-preview').hide();
+        $('#nc-image-preview img').attr('src', '');
+        $(this).hide();
     });
 });

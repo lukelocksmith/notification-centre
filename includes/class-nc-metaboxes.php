@@ -583,7 +583,28 @@ class NC_Metaboxes {
                 <input type="text" name="nc_icon" id="nc_icon_field" value="<?php echo esc_attr($icon); ?>" class="regular-text" placeholder="URL, Emoji lub Dashicons">
                 <button type="button" class="button nc-upload-icon-btn">Wybierz</button>
             </p>
-            
+
+            <?php
+                $nc_image_id  = (int) get_post_meta( $post->ID, 'nc_image_id', true );
+                $nc_image_url = $nc_image_id ? wp_get_attachment_image_url( $nc_image_id, 'medium' ) : '';
+            ?>
+            <p>
+                <label class="nc-label" style="vertical-align:top; margin-top:4px;">Obrazek</label>
+                <span style="display:inline-block;">
+                    <input type="hidden" name="nc_image_id" id="nc_image_id_field" value="<?php echo esc_attr( $nc_image_id ?: '' ); ?>">
+                    <div id="nc-image-preview" style="margin-bottom:8px; <?php echo $nc_image_url ? '' : 'display:none;'; ?>">
+                        <img src="<?php echo esc_url( $nc_image_url ); ?>" style="max-width:300px; max-height:200px; border-radius:4px; border:1px solid #ddd; display:block;">
+                    </div>
+                    <button type="button" class="button nc-upload-image-btn">Wybierz obrazek</button>
+                    <?php if ( $nc_image_id ) : ?>
+                        <button type="button" class="button nc-remove-image-btn" style="margin-left:4px;">Usuń</button>
+                    <?php else : ?>
+                        <button type="button" class="button nc-remove-image-btn" style="margin-left:4px; display:none;">Usuń</button>
+                    <?php endif; ?>
+                    <p class="description" style="margin-top:4px;">Wyświetlany nad treścią w popup i szufladzie. Zalecany format: 16:9.</p>
+                </span>
+            </p>
+
             <hr>
         </div>
         
@@ -615,12 +636,50 @@ class NC_Metaboxes {
             delete_post_meta( $post_id, 'nc_title_custom_css' );
         }
 
+        // Image attachment ID
+        if ( isset( $_POST['nc_image_id'] ) ) {
+            $image_id = absint( $_POST['nc_image_id'] );
+            if ( $image_id ) {
+                update_post_meta( $post_id, 'nc_image_id', $image_id );
+            } else {
+                delete_post_meta( $post_id, 'nc_image_id' );
+            }
+        } else {
+            delete_post_meta( $post_id, 'nc_image_id' );
+        }
+
+        // Color fields — validate format before saving
+        $color_fields = [ 'nc_bg_color', 'nc_text_color', 'nc_btn_bg_color', 'nc_btn_text_color' ];
+        foreach ( $color_fields as $field ) {
+            if ( isset( $_POST[ $field ] ) ) {
+                $val = trim( sanitize_text_field( $_POST[ $field ] ) );
+                if ( preg_match( '/^#([0-9a-f]{3}|[0-9a-f]{6})$/i', $val )
+                    || preg_match( '/^rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*(,\s*[0-9.]+\s*)?\)$/i', $val ) ) {
+                    update_post_meta( $post_id, $field, $val );
+                } else {
+                    delete_post_meta( $post_id, $field );
+                }
+            } else {
+                delete_post_meta( $post_id, $field );
+            }
+        }
+
+        // CTA URL — validate safe URL
+        if ( isset( $_POST['nc_cta_url'] ) ) {
+            $url = sanitize_text_field( $_POST['nc_cta_url'] );
+            if ( $url && ! preg_match( '/^(https?:\/\/|\/|#|mailto:|tel:)/i', $url ) ) {
+                $url = '';
+            }
+            update_post_meta( $post_id, 'nc_cta_url', $url );
+        } else {
+            delete_post_meta( $post_id, 'nc_cta_url' );
+        }
+
         // Text/Select fields
         $fields = [
-            'nc_title', 'nc_cta_url', 'nc_cta_label', 'nc_icon', 'nc_active_from', 'nc_active_to', 'nc_audience',
+            'nc_title', 'nc_cta_label', 'nc_icon', 'nc_active_from', 'nc_active_to', 'nc_audience',
             'nc_floating_delay', 'nc_floating_duration', 'nc_floating_width', 'nc_floating_position',
             'nc_repeat_value', 'nc_repeat_unit',
-            'nc_bg_color', 'nc_text_color', 'nc_btn_bg_color', 'nc_btn_text_color',
             'nc_countdown_type', 'nc_countdown_date', 'nc_countdown_time', 'nc_countdown_label', 'nc_countdown_start_time',
             'nc_topbar_position', 'nc_topbar_style'
         ];

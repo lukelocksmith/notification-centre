@@ -1417,6 +1417,55 @@ body.nc-topbar-active.nc-has-sticky-topbar .nc-region-top-left {
     display: none;
 }
 
+/* ── Floating image ───────────────────────────────────────────── */
+.nc-floating-image-wrap {
+    margin: -16px -16px 12px;
+    border-radius: 12px 12px 0 0;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.nc-floating-image-wrap img {
+    width: 100%;
+    display: block;
+    object-fit: cover;
+    max-height: 220px;
+}
+
+/* Image-only: fills entire popup */
+.nc-floating.nc-has-image-only {
+    padding: 0;
+}
+
+.nc-floating.nc-has-image-only .nc-floating-image-wrap {
+    margin: 0;
+    border-radius: inherit;
+}
+
+.nc-floating.nc-has-image-only .nc-floating-image-wrap img {
+    max-height: none;
+    width: 100%;
+    min-height: 180px;
+}
+
+/* Close button visible on image */
+.nc-floating.nc-has-image-only .nc-floating-close {
+    background: rgba(255, 255, 255, 0.85);
+    color: #1d1d1f;
+    opacity: 1;
+}
+
+/* Center modal overrides */
+.nc-floating.nc-pos-center .nc-floating-image-wrap {
+    margin: -30px -30px 16px;
+    border-radius: 20px 20px 0 0;
+}
+
+.nc-floating.nc-pos-center.nc-has-image-only .nc-floating-image-wrap {
+    margin: 0;
+    border-radius: inherit;
+}
+
 /* Animations */
 @keyframes ncSlideIn {
     from {

@@ -97,6 +97,12 @@ class NC_Analytics {
 		$page_url        = $request->get_param( 'page_url' ) ?: '';
 		$user_id         = get_current_user_id();
 
+		// Verify notification exists and is published
+		$post = get_post( $notification_id );
+		if ( ! $post || $post->post_type !== 'nc_notification' || $post->post_status !== 'publish' ) {
+			return new WP_Error( 'invalid_notification', 'Notification not found', [ 'status' => 404 ] );
+		}
+
 		// Session ID from cookie or generate one
 		$session_id = $_COOKIE['nc_session'] ?? wp_generate_uuid4();
 

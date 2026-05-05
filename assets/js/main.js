@@ -15,6 +15,14 @@
         }
     };
 
+    // XSS escape helpers
+    const _escMap = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => _escMap[c]);
+    const safeUrl = u => {
+        const s = String(u ?? '').trim();
+        return /^(https?:|\/|#|mailto:|tel:)/i.test(s) ? esc(s) : '#';
+    };
+
     // Safe localStorage wrapper (falls back to in-memory if localStorage unavailable)
     const memoryStore = {};
     function storageGet(key, fallback) {
@@ -500,7 +508,7 @@
             el.dataset.id = n.id;
 
             // Text truncation logic
-            let bodyHtml = `<div class="nc-content line-clamp">${n.body}</div>`;
+            let bodyHtml = `<div class="nc-content line-clamp">${esc(n.body)}</div>`;
             let toggleBtn = '';
 
             // Simple expansion check (naive char count or CSS generic)
@@ -520,14 +528,16 @@
             const btnBg = s.btn_bg || g.btnBg || '#007AFF';
             const btnText = s.btn_text || g.btnText || '#ffffff';
 
-            const itemStyle = `background-color:${bg}; color:${text};`;
-            const btnStyle = `background-color:${btnBg}; color:${btnText};`;
+            const itemStyle = `background-color:${esc(bg)}; color:${esc(text)};`;
+            const btnStyle = `background-color:${esc(btnBg)}; color:${esc(btnText)};`;
 
             // Don't override user notification background with inline style
             if (!isUserNotif) el.style.cssText = itemStyle;
             else el.style.color = text;
 
             const iconHtml = n.icon ? `<div class="nc-item-icon" style="flex-shrink:0; margin-right:15px;">${renderIcon(n.icon, 60)}</div>` : '';
+            // image_url is a WordPress attachment URL generated server-side via wp_get_attachment_image_url() — safe to use in src
+            const imageHtml = n.image_url ? `<img src="${n.image_url}" alt="" style="width:100%; border-radius:6px; margin-bottom:10px; display:block; object-fit:cover; max-height:180px;">` : '';
 
             // Category badge for user notifications (data comes from our own API, safe for innerHTML)
             const userBadgeLabel = isUserNotif ? (String(n.id).indexOf('abandoned') > -1 ? 'Koszyk' : 'Zamówienie') : '';
@@ -546,11 +556,12 @@
                             ${!n.settings.sidebar_permanent ? '<button class="nc-dismiss" title="Usuń">&times;</button>' : ''}
                         </div>
                         <div class="nc-item-body">
-                            <h4 style="color:inherit;${n.title_css ? ' ' + n.title_css : ''}">${!isRead ? '<span class="nc-new-badge">Nowe</span>' : ''}${n.title}</h4>
+                            ${imageHtml}
+                            <h4 style="color:inherit;">${!isRead ? '<span class="nc-new-badge">Nowe</span>' : ''}${esc(n.title)}</h4>
                             ${bodyHtml}
                             ${toggleBtn}
                             ${n.settings.countdown && n.settings.countdown.enabled ? renderCountdownHTML(n.settings.countdown, true) : ''}
-                            ${n.cta_label ? `<a href="${n.cta_url}" class="nc-btn" style="${btnStyle}">${n.cta_label}</a>` : ''}
+                            ${n.cta_label ? `<a href="${safeUrl(n.cta_url)}" class="nc-btn" style="${btnStyle}">${esc(n.cta_label)}</a>` : ''}
                         </div>
                     </div>
                 </div>
@@ -971,30 +982,40 @@
         const btnBg = s.btn_bg || g.btnBg || '#007AFF';
         const btnText = s.btn_text || g.btnText || '#ffffff';
 
-        el.style.backgroundColor = bg;
-        el.style.color = text;
+        el.style.backgroundColor = esc(bg);
+        el.style.color = esc(text);
 
         // Content
-        const btnStyle = `background-color:${btnBg}; color:${btnText}; padding:6px 12px; border-radius:4px; text-decoration:none; display:inline-block; font-size:13px; margin-top:8px;`;
+        const btnStyle = `background-color:${esc(btnBg)}; color:${esc(btnText)}; padding:6px 12px; border-radius:4px; text-decoration:none; display:inline-block; font-size:13px; margin-top:8px;`;
 
         // Icon
         const iconHtml = n.icon ? `<div class="nc-floating-icon" style="margin-right:12px;">${renderIcon(n.icon)}</div>` : '';
 
-        // Layout varies slightly for center vs corner?
-        // Reuse generic structure
+        const hasContent = !!(n.title || n.body || n.cta_label);
+        // image_url is a WordPress attachment URL generated server-side via wp_get_attachment_image_url() — safe to use in src
+        const floatingImageHtml = n.image_url
+            ? `<div class="nc-floating-image-wrap${hasContent ? '' : ' nc-image-only'}">`
+              + `<img src="${n.image_url}" alt=""></div>`
+            : '';
+
+        if (!hasContent && n.image_url) {
+            el.classList.add('nc-has-image-only');
+        }
 
         // Budujemy HTML
         const floatingHTML = `
+            ${floatingImageHtml}
+            ${hasContent ? `
             <div class="nc-floating-header">
                 ${iconHtml}
                 <div style="flex-grow:1;">
-                    <div class="nc-floating-title"${n.title_css ? ` style="${n.title_css}"` : ''}>${n.title}</div>
-                    <div class="nc-floating-body">${n.body}</div>
+                    <div class="nc-floating-title">${esc(n.title)}</div>
+                    <div class="nc-floating-body">${esc(n.body)}</div>
                     ${n.settings.countdown && n.settings.countdown.enabled ? renderCountdownHTML(n.settings.countdown, true) : ''}
-                    ${n.cta_label ? `<a href="${n.cta_url}" class="nc-floating-btn" style="${btnStyle}">${n.cta_label}</a>` : ''}
+                    ${n.cta_label ? `<a href="${safeUrl(n.cta_url)}" class="nc-floating-btn" style="${btnStyle}">${esc(n.cta_label)}</a>` : ''}
                 </div>
-                <button class="nc-floating-close">&times;</button>
-            </div>
+            </div>` : ''}
+            <button class="nc-floating-close">&times;</button>
         `;
 
         // Wstawiamy HTML (inline scripts nie będą wykonane przez innerHTML)
@@ -1280,18 +1301,18 @@
         topBarItems.forEach((n, i) => {
             const activeClass = i === 0 ? 'active' : '';
             const cs = n.settings.colors || {};
-            const itemStyle = cs.bg ? `background-color:${cs.bg}; color:${cs.text || '#fff'};` : '';
+            const itemStyle = cs.bg ? `background-color:${esc(cs.bg)}; color:${esc(cs.text || '#fff')};` : '';
             html += `<div class="nc-topbar-item ${activeClass}" data-id="${n.id}" style="${itemStyle}">`;
-            html += `<span class="nc-topbar-title"${n.title_css ? ` style="${n.title_css}"` : ''}>${n.title}</span>`;
+            html += `<span class="nc-topbar-title">${esc(n.title)}</span>`;
             if (n.body) {
-                html += `<span class="nc-topbar-description">${n.body}</span>`;
+                html += `<span class="nc-topbar-description">${esc(n.body)}</span>`;
             }
             if (n.settings.countdown && n.settings.countdown.enabled) {
                 html += renderCountdownHTML(n.settings.countdown, false);
             }
             if (n.cta_label && n.cta_url) {
-                const btnStyle = cs.btn_bg ? `background-color:${cs.btn_bg}; color:${cs.btn_text || '#fff'};` : '';
-                html += `<a href="${n.cta_url}" class="nc-topbar-btn"${btnStyle ? ` style="${btnStyle}"` : ''}>${n.cta_label}</a>`;
+                const btnStyle = cs.btn_bg ? `background-color:${esc(cs.btn_bg)}; color:${esc(cs.btn_text || '#fff')};` : '';
+                html += `<a href="${safeUrl(n.cta_url)}" class="nc-topbar-btn"${btnStyle ? ` style="${btnStyle}"` : ''}>${esc(n.cta_label)}</a>`;
             }
             html += '</div>';
         });
@@ -1501,7 +1522,7 @@
         if (!target) return '';
 
         const time = calculateTimeLeft(target);
-        const label = countdown.label && includeLabel ? `<span class="nc-countdown-label">${countdown.label}</span>` : '';
+        const label = countdown.label && includeLabel ? `<span class="nc-countdown-label">${esc(countdown.label)}</span>` : '';
         const showUnits = ncData.countdown?.showUnits !== false;
 
         const pad = n => String(n).padStart(2, '0');
