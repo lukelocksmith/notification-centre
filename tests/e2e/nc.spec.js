@@ -19,10 +19,12 @@ const DDEV_ROOT = require('path').resolve(__dirname, '../../../../../..');
  * Uses execFileSync with an argument array — no shell, no injection risk.
  */
 function wp(...args) {
-    return execFileSync('ddev', ['wp', ...args], {
+    const out = execFileSync('ddev', ['wp', ...args], {
         encoding: 'utf8',
         cwd: DDEV_ROOT,
     }).trim();
+    // LiteSpeed Cache prepends "Success: Purged all caches successfully." — take last line only
+    return out.split('\n').pop().trim();
 }
 
 /**
