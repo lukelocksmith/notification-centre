@@ -215,8 +215,8 @@ class NC_Woo_Notifications {
 				'icon'  => '⚙️',
 			],
 			'completed' => [
-				'title' => "Zamówienie #{$order_number} zostało zrealizowane!",
-				'body'  => "Twoje zamówienie #{$order_number} zostało zrealizowane. Dziękujemy za zakupy!",
+				'title' => "Zamówienie #{$order_number} zostało przekazane do dostawy!",
+				'body'  => "Twoje zamówienie #{$order_number} zostało przekazane do dostawy. Dziękujemy za zakupy!",
 				'icon'  => '✅',
 			],
 			'on-hold' => [

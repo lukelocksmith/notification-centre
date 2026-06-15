@@ -469,11 +469,11 @@ class NC_Settings {
                         </td>
                     </tr>
                     <tr valign="top">
-                        <th scope="row">Zrealizowane (completed)</th>
+                        <th scope="row">Przekazane do dostawy (completed)</th>
                         <td>
                             <label>
                                 <input type="checkbox" name="nc_woo_order_completed" value="1" <?php checked( get_option( 'nc_woo_order_completed', '1' ), '1' ); ?>>
-                                "Zamówienie #X zostało zrealizowane!"
+                                "Zamówienie #X zostało przekazane do dostawy!"
                             </label>
                         </td>
                     </tr>
