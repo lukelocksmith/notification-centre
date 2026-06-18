@@ -30,6 +30,7 @@ class NC_Metaboxes {
         $nc_title_custom_css = get_post_meta( $post->ID, 'nc_title_custom_css', true );
         $cta_label = get_post_meta( $post->ID, 'nc_cta_label', true );
         $cta_url = get_post_meta( $post->ID, 'nc_cta_url', true );
+        $cta_target = get_post_meta( $post->ID, 'nc_cta_target', true ) ?: '_self';
         $icon = get_post_meta( $post->ID, 'nc_icon', true );
         
         // Behavioral
@@ -270,6 +271,13 @@ class NC_Metaboxes {
                 <label class="nc-label">URL przycisku</label>
                 <input type="text" name="nc_cta_url" value="<?php echo esc_attr($cta_url); ?>" class="regular-text">
                 <p class="description" style="margin-left:184px; margin-top:5px; color:#888;">np. <code>https://google.com</code> lub <code>/kontakt</code></p>
+            </p>
+            <p>
+                <label class="nc-label">Otwieranie linku</label>
+                <select name="nc_cta_target">
+                    <option value="_self" <?php selected($cta_target, '_self'); ?>>To samo okno</option>
+                    <option value="_blank" <?php selected($cta_target, '_blank'); ?>>Nowa karta</option>
+                </select>
             </p>
         </div>
 
@@ -677,7 +685,7 @@ class NC_Metaboxes {
 
         // Text/Select fields
         $fields = [
-            'nc_title', 'nc_cta_label', 'nc_icon', 'nc_active_from', 'nc_active_to', 'nc_audience',
+            'nc_title', 'nc_cta_label', 'nc_cta_target', 'nc_icon', 'nc_active_from', 'nc_active_to', 'nc_audience',
             'nc_floating_delay', 'nc_floating_duration', 'nc_floating_width', 'nc_floating_position',
             'nc_repeat_value', 'nc_repeat_unit',
             'nc_countdown_type', 'nc_countdown_date', 'nc_countdown_time', 'nc_countdown_label', 'nc_countdown_start_time',

@@ -224,6 +224,7 @@ class NC_Logic {
 		'body' => do_shortcode( $get('nc_description') ),
            'cta_label' => $get('nc_cta_label'),
            'cta_url' => $get('nc_cta_url'),
+           'cta_target' => $get('nc_cta_target') ?: '_self',
            'icon' => $get('nc_icon'),
            'image_url' => ( $img_id = (int) $get('nc_image_id') ) ? ( wp_get_attachment_image_url( $img_id, 'large' ) ?: '' ) : '',
            'type' => 'info',

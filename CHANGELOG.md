@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.4.9] - 2026-06-18
+### Added
+- **CTA link target** — new "Otwieranie linku" option in the CTA section (section 3) lets you choose whether the button opens in the same window (`_self`) or a new tab (`_blank`). The chosen target is rendered as a `target` attribute on the frontend button across all display modes (sidebar/drawer, floating, top bar). New-tab links also get `rel="noopener noreferrer"` for security. Defaults to same window for existing notifications.
+
 ## [1.4.8] - 2026-04-09
 ### Fixed
 - **uninstall.php no longer deletes plugin options** — prevents data loss when user installs new version via ZIP upload alongside old version and then deletes old copy

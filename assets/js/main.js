@@ -23,6 +23,13 @@
         return /^(https?:|\/|#|mailto:|tel:)/i.test(s) ? esc(s) : '#';
     };
 
+    // CTA link target attributes (target + safe rel for new-tab links)
+    function ctaTargetAttrs(n) {
+        return (n && n.cta_target === '_blank')
+            ? ' target="_blank" rel="noopener noreferrer"'
+            : ' target="_self"';
+    }
+
     // Safe localStorage wrapper (falls back to in-memory if localStorage unavailable)
     const memoryStore = {};
     function storageGet(key, fallback) {
@@ -561,7 +568,7 @@
                             ${bodyHtml}
                             ${toggleBtn}
                             ${n.settings.countdown && n.settings.countdown.enabled ? renderCountdownHTML(n.settings.countdown, true) : ''}
-                            ${n.cta_label ? `<a href="${safeUrl(n.cta_url)}" class="nc-btn" style="${btnStyle}">${esc(n.cta_label)}</a>` : ''}
+                            ${n.cta_label ? `<a href="${safeUrl(n.cta_url)}" class="nc-btn" style="${btnStyle}"${ctaTargetAttrs(n)}>${esc(n.cta_label)}</a>` : ''}
                         </div>
                     </div>
                 </div>
@@ -1012,7 +1019,7 @@
                     <div class="nc-floating-title">${esc(n.title)}</div>
                     <div class="nc-floating-body">${esc(n.body)}</div>
                     ${n.settings.countdown && n.settings.countdown.enabled ? renderCountdownHTML(n.settings.countdown, true) : ''}
-                    ${n.cta_label ? `<a href="${safeUrl(n.cta_url)}" class="nc-floating-btn" style="${btnStyle}">${esc(n.cta_label)}</a>` : ''}
+                    ${n.cta_label ? `<a href="${safeUrl(n.cta_url)}" class="nc-floating-btn" style="${btnStyle}"${ctaTargetAttrs(n)}>${esc(n.cta_label)}</a>` : ''}
                 </div>
             </div>` : ''}
             <button class="nc-floating-close">&times;</button>
@@ -1312,7 +1319,7 @@
             }
             if (n.cta_label && n.cta_url) {
                 const btnStyle = cs.btn_bg ? `background-color:${esc(cs.btn_bg)}; color:${esc(cs.btn_text || '#fff')};` : '';
-                html += `<a href="${safeUrl(n.cta_url)}" class="nc-topbar-btn"${btnStyle ? ` style="${btnStyle}"` : ''}>${esc(n.cta_label)}</a>`;
+                html += `<a href="${safeUrl(n.cta_url)}" class="nc-topbar-btn"${btnStyle ? ` style="${btnStyle}"` : ''}${ctaTargetAttrs(n)}>${esc(n.cta_label)}</a>`;
             }
             html += '</div>';
         });

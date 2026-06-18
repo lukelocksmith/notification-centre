@@ -68,6 +68,7 @@ class NC_Rest_Api {
 				'body'      => $row->body,
 				'cta_label' => $row->cta_label,
 				'cta_url'   => $row->cta_url,
+				'cta_target'=> '_self',
 				'icon'      => $row->icon,
 				'type'      => 'user',
 				'date'      => $row->created_at,
