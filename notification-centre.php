@@ -3,7 +3,7 @@
  * Plugin Name: Notification Centre
  * Plugin URI:  https://agencyjnie.pl
  * Description: Advanced on-site notification center with OneSignal integration.
- * Version:     1.5.0
+ * Version:     1.5.1
  * Author:      important.is
  * Text Domain: notification-centre
  */
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define Constants
-define( 'NC_VERSION', '1.5.0' );
+define( 'NC_VERSION', '1.5.1' );
 define( 'NC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -94,21 +94,28 @@ class Notification_Centre {
             // Cache form IDs from notifications (avoids WP_Query search on every page load)
             $form_ids = get_transient( 'nc_fluentform_ids' );
             if ( $form_ids === false ) {
+                // nc_notification doesn't support 'editor', so the shortcode lives in the
+                // nc_description postmeta, not post_content — search meta, not post content.
                 $ff_query = new WP_Query( [
-                    'post_type' => 'nc_notification',
-                    'post_status' => 'publish',
+                    'post_type'      => 'nc_notification',
+                    'post_status'    => 'publish',
                     'posts_per_page' => -1,
-                    's' => '[fluentform'
+                    'fields'         => 'ids',
+                    'meta_query'     => [
+                        [
+                            'key'     => 'nc_description',
+                            'value'   => '[fluentform',
+                            'compare' => 'LIKE',
+                        ],
+                    ],
                 ] );
                 $form_ids = [];
-                while ( $ff_query->have_posts() ) {
-                    $ff_query->the_post();
-                    $content = get_the_content();
-                    if ( preg_match_all( '/\[fluentform\s+[^\]]*id=["\']?(\d+)["\']?[^\]]*\]/i', $content, $matches ) ) {
+                foreach ( $ff_query->posts as $notification_id ) {
+                    $description = get_post_meta( $notification_id, 'nc_description', true );
+                    if ( preg_match_all( '/\[fluentform\s+[^\]]*id=["\']?(\d+)["\']?[^\]]*\]/i', $description, $matches ) ) {
                         $form_ids = array_merge( $form_ids, $matches[1] );
                     }
                 }
-                wp_reset_postdata();
                 $form_ids = array_unique( $form_ids );
                 set_transient( 'nc_fluentform_ids', $form_ids, HOUR_IN_SECONDS );
             }
