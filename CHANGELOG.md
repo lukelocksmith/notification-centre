@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5.5] - 2026-07-08
+### Fixed
+- **Blank space around image-only center popups** — `.nc-floating.nc-pos-center` sets `padding: 30px` with the exact same CSS specificity (two classes) as `.nc-has-image-only`'s `padding: 0` reset, and appears later in the stylesheet, so it silently won and left a padded white border around image-only notifications using the "Środek Ekranu (Popup)" position. Added a 3-class `.nc-floating.nc-pos-center.nc-has-image-only` rule to force padding to 0 regardless of source order.
+
 ## [1.5.4] - 2026-07-08
 ### Fixed
 - **Letterboxed/blank background around image-only notifications** — the 1.5.3 `object-fit: contain` fix used a fixed-height image box, which left large empty side bars (filled with the letterbox background) for non-16:9 images, e.g. a square 1:1 promo image in a wide popup. Image-only notifications (no title/body/CTA) now size to the image's natural aspect ratio (`height: auto`, capped at 70vh) instead of a fixed box, so square/portrait images display edge-to-edge with no blank space. Notifications that DO have a title/body still use the fixed-height contain box, since that layout needs a consistent card height.

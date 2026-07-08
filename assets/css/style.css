@@ -1482,6 +1482,13 @@ body.nc-topbar-active.nc-has-sticky-topbar .nc-region-top-left {
     border-radius: inherit;
 }
 
+/* Same specificity as .nc-pos-center's padding:30px but appears earlier in
+   source order, so without this 3-class tie-breaker it would lose and leave
+   a blank 30px border around image-only center popups. */
+.nc-floating.nc-pos-center.nc-has-image-only {
+    padding: 0;
+}
+
 /* Animations */
 @keyframes ncSlideIn {
     from {
