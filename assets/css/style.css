@@ -1460,7 +1460,8 @@ body.nc-topbar-active.nc-has-sticky-topbar .nc-region-top-left {
 
 .nc-floating.nc-has-image-only .nc-floating-image-wrap img {
     width: 100%;
-    height: 260px;
+    height: auto;
+    max-height: 70vh;
 }
 
 /* Close button visible on image */

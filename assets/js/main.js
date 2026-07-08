@@ -550,7 +550,11 @@
             const imageOnly = !hasTextContent && !!n.image_url;
 
             // image_url is a WordPress attachment URL generated server-side via wp_get_attachment_image_url() — safe to use in src
-            const imageTag = n.image_url ? `<img src="${n.image_url}" alt="" style="width:100%; height:180px; border-radius:6px; ${imageOnly ? '' : 'margin-bottom:10px;'} display:block; object-fit:contain; background:rgba(0,0,0,0.04);">` : '';
+            const imageTag = n.image_url
+                ? (imageOnly
+                    ? `<img src="${n.image_url}" alt="" style="width:100%; height:auto; max-height:70vh; border-radius:6px; display:block;">`
+                    : `<img src="${n.image_url}" alt="" style="width:100%; height:180px; border-radius:6px; margin-bottom:10px; display:block; object-fit:contain; background:rgba(0,0,0,0.04);">`)
+                : '';
             const imageHtml = (imageOnly && n.cta_url)
                 ? `<a href="${safeUrl(n.cta_url)}" class="nc-image-link"${ctaTargetAttrs(n)}>${imageTag}</a>`
                 : imageTag;

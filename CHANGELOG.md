@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5.4] - 2026-07-08
+### Fixed
+- **Letterboxed/blank background around image-only notifications** — the 1.5.3 `object-fit: contain` fix used a fixed-height image box, which left large empty side bars (filled with the letterbox background) for non-16:9 images, e.g. a square 1:1 promo image in a wide popup. Image-only notifications (no title/body/CTA) now size to the image's natural aspect ratio (`height: auto`, capped at 70vh) instead of a fixed box, so square/portrait images display edge-to-edge with no blank space. Notifications that DO have a title/body still use the fixed-height contain box, since that layout needs a consistent card height.
+
 ## [1.5.3] - 2026-07-08
 ### Added
 - **"Ukryj tytuł na froncie"** checkbox (section 2) — keeps the post title for internal identification in wp-admin only, without rendering it in the sidebar/drawer or floating popup/toast. Combined with image-only mode, this lets a notification's title stay filled in (required by WordPress) while the frontend shows a clean, text-free image.
