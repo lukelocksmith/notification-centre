@@ -25,6 +25,7 @@ class NC_Metaboxes {
     public function render_settings_box( $post ) {
 		// Data
         $nc_title = get_post_meta( $post->ID, 'nc_title', true );
+        $hide_title = get_post_meta( $post->ID, 'nc_hide_title', true );
         $nc_description = get_post_meta( $post->ID, 'nc_description', true );
         $nc_title_custom_css_enabled = get_post_meta( $post->ID, 'nc_title_custom_css_enabled', true );
         $nc_title_custom_css = get_post_meta( $post->ID, 'nc_title_custom_css', true );
@@ -52,6 +53,8 @@ class NC_Metaboxes {
         $show_as_floating = get_post_meta( $post->ID, 'nc_show_as_floating', true );
         $floating_position = get_post_meta( $post->ID, 'nc_floating_position', true ) ?: 'bottom_right';
         $floating_width = get_post_meta( $post->ID, 'nc_floating_width', true );
+        $max_width_desktop = get_post_meta( $post->ID, 'nc_max_width_desktop', true );
+        $max_width_mobile = get_post_meta( $post->ID, 'nc_max_width_mobile', true );
         $floating_delay = get_post_meta( $post->ID, 'nc_floating_delay', true ) ?: '2';
         $floating_duration = get_post_meta( $post->ID, 'nc_floating_duration', true ) ?: '0';
         
@@ -117,6 +120,16 @@ class NC_Metaboxes {
                     <p>
                         <label class="nc-label">Szerokość (px)</label>
                         <input type="number" name="nc_floating_width" value="<?php echo esc_attr($floating_width); ?>" placeholder="Domyślna">
+                    </p>
+                    <p>
+                        <label class="nc-label">Maks. szerokość - Desktop (px)</label>
+                        <input type="number" name="nc_max_width_desktop" value="<?php echo esc_attr($max_width_desktop); ?>" placeholder="np. 400" min="0">
+                        <span class="description">Ogranicza szerokość karty na ekranach powyżej 768px.</span>
+                    </p>
+                    <p>
+                        <label class="nc-label">Maks. szerokość - Mobile (px)</label>
+                        <input type="number" name="nc_max_width_mobile" value="<?php echo esc_attr($max_width_mobile); ?>" placeholder="np. 320" min="0">
+                        <span class="description">Ogranicza szerokość karty na ekranach do 768px.</span>
                     </p>
                     <p>
                         <label class="nc-label">Czas trwania (s)</label>
@@ -240,7 +253,12 @@ class NC_Metaboxes {
                     <input type="checkbox" name="nc_title_custom_css_enabled" id="nc_title_custom_css_enabled" value="1" <?php checked($nc_title_custom_css_enabled, '1'); ?>>
                     Custom CSS tytułu
                 </label>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:600; white-space:nowrap; cursor:pointer;">
+                    <input type="checkbox" name="nc_hide_title" value="1" <?php checked($hide_title, '1'); ?>>
+                    Ukryj tytuł na froncie
+                </label>
             </p>
+            <p class="description" style="margin-left:184px; margin-top:-4px;">Tytuł zostaje wyłącznie w panelu WP (do identyfikacji notyfikacji) — nie wyświetli się w popupie, szufladzie ani pasku. Przydatne np. dla notyfikacji z samym obrazkiem.</p>
             <div id="nc-title-css-wrap" style="<?php echo $nc_title_custom_css_enabled === '1' ? '' : 'display:none;'; ?> margin-bottom:10px; margin-left:184px;">
                 <textarea name="nc_title_custom_css" rows="4" style="width:100%; max-width:400px; font-family:monospace;" placeholder="font-size: 22px;&#10;font-weight: 900;&#10;letter-spacing: -1px;"><?php echo esc_textarea($nc_title_custom_css); ?></textarea>
                 <p class="description" style="margin-top:4px;">CSS wpisz jako właściwości inline, np. <code>font-size: 22px; font-weight: 900;</code> — nadpisuje domyślne style tytułu.</p>
@@ -610,7 +628,7 @@ class NC_Metaboxes {
                     <?php else : ?>
                         <button type="button" class="button nc-remove-image-btn" style="margin-left:4px; display:none;">Usuń</button>
                     <?php endif; ?>
-                    <p class="description" style="margin-top:4px;">Wyświetlany nad treścią w popup i szufladzie. Zalecany format: 16:9.</p>
+                    <p class="description" style="margin-top:4px;">Wyświetlany nad treścią w popup i szufladzie. Obrazek nie jest kadrowany (object-fit: contain) — całość zawsze widoczna, ewentualne puste pasy dopełniane są delikatnym tłem.</p>
                     <p class="description" style="margin-top:4px;">Bez Tytułu/Opisu/Etykiety przycisku obrazek wyświetli się samodzielnie (tzw. "sam obrazek"). Jeśli dodatkowo podasz URL przycisku (sekcja 3), cały obrazek stanie się klikalnym linkiem.</p>
                 </span>
             </p>
@@ -689,6 +707,7 @@ class NC_Metaboxes {
         $fields = [
             'nc_title', 'nc_cta_label', 'nc_cta_target', 'nc_icon', 'nc_active_from', 'nc_active_to', 'nc_audience',
             'nc_floating_delay', 'nc_floating_duration', 'nc_floating_width', 'nc_floating_position',
+            'nc_max_width_desktop', 'nc_max_width_mobile',
             'nc_repeat_value', 'nc_repeat_unit',
             'nc_countdown_type', 'nc_countdown_date', 'nc_countdown_time', 'nc_countdown_label', 'nc_countdown_start_time',
             'nc_topbar_position', 'nc_topbar_style'
@@ -740,7 +759,7 @@ class NC_Metaboxes {
         
         // Checkboxes
         $checkboxes = [
-            'nc_title_custom_css_enabled',
+            'nc_title_custom_css_enabled', 'nc_hide_title',
             'nc_show_in_sidebar', 'nc_sidebar_pinned', 'nc_sidebar_permanent',
             'nc_show_as_floating',
             'nc_show_as_topbar', 'nc_topbar_permanent',

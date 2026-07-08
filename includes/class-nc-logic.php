@@ -230,6 +230,7 @@ class NC_Logic {
            'type' => 'info',
            'date' => get_the_date( 'Y-m-d H:i', $post ),
            'settings' => [
+               'hide_title' => $get('nc_hide_title') === '1',
                'dismissible' => ($get('nc_pinned') === '1') ? false : ($get('nc_dismissible') === '1'),
                'pinned' => $get('nc_pinned') === '1',
                
@@ -240,6 +241,8 @@ class NC_Logic {
                'show_as_floating' => $get('nc_show_as_floating'), // '1' or ''
                'floating_position' => $get('nc_floating_position') ?: 'bottom_right',
                'floating_width' => (int)$get('nc_floating_width') ?: 0,
+               'max_width_desktop' => (int)$get('nc_max_width_desktop') ?: 0,
+               'max_width_mobile' => (int)$get('nc_max_width_mobile') ?: 0,
                'floating_delay' => (int)($get('nc_floating_delay') !== '' ? $get('nc_floating_delay') : 2), // Seconds
                'floating_duration' => (int)$get('nc_floating_duration'), // Seconds (0 = permanent)
                

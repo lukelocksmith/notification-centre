@@ -545,11 +545,12 @@
             const iconHtml = n.icon ? `<div class="nc-item-icon" style="flex-shrink:0; margin-right:15px;">${renderIcon(n.icon, 60)}</div>` : '';
 
             // Image-only mode: no title/body/CTA label set, just an image (optionally linked via CTA URL)
-            const hasTextContent = !!(n.title || n.body || n.cta_label);
+            const effectiveTitle = n.settings.hide_title ? '' : n.title;
+            const hasTextContent = !!(effectiveTitle || n.body || n.cta_label);
             const imageOnly = !hasTextContent && !!n.image_url;
 
             // image_url is a WordPress attachment URL generated server-side via wp_get_attachment_image_url() — safe to use in src
-            const imageTag = n.image_url ? `<img src="${n.image_url}" alt="" style="width:100%; border-radius:6px; ${imageOnly ? '' : 'margin-bottom:10px;'} display:block; object-fit:cover; max-height:180px;">` : '';
+            const imageTag = n.image_url ? `<img src="${n.image_url}" alt="" style="width:100%; height:180px; border-radius:6px; ${imageOnly ? '' : 'margin-bottom:10px;'} display:block; object-fit:contain; background:rgba(0,0,0,0.04);">` : '';
             const imageHtml = (imageOnly && n.cta_url)
                 ? `<a href="${safeUrl(n.cta_url)}" class="nc-image-link"${ctaTargetAttrs(n)}>${imageTag}</a>`
                 : imageTag;
@@ -574,7 +575,7 @@
                         <div class="nc-item-body">
                             ${imageHtml}
                             ${imageOnly ? '' : `
-                            <h4 style="color:inherit;">${!isRead ? '<span class="nc-new-badge">Nowe</span>' : ''}${esc(n.title)}</h4>
+                            ${effectiveTitle ? `<h4 style="color:inherit;">${!isRead ? '<span class="nc-new-badge">Nowe</span>' : ''}${esc(effectiveTitle)}</h4>` : ''}
                             ${bodyHtml}
                             ${toggleBtn}
                             ${n.settings.countdown && n.settings.countdown.enabled ? renderCountdownHTML(n.settings.countdown, true) : ''}
@@ -991,6 +992,12 @@
         if (n.settings.floating_width > 0) {
             el.style.width = `${n.settings.floating_width}px`;
         }
+        if (n.settings.max_width_desktop > 0) {
+            el.style.setProperty('--nc-max-width-desktop', `${n.settings.max_width_desktop}px`);
+        }
+        if (n.settings.max_width_mobile > 0) {
+            el.style.setProperty('--nc-max-width-mobile', `${n.settings.max_width_mobile}px`);
+        }
 
         // Colors
         const g = ncData.globalColors || {};
@@ -1009,7 +1016,8 @@
         // Icon
         const iconHtml = n.icon ? `<div class="nc-floating-icon" style="margin-right:12px;">${renderIcon(n.icon)}</div>` : '';
 
-        const hasContent = !!(n.title || n.body || n.cta_label);
+        const effectiveTitle = n.settings.hide_title ? '' : n.title;
+        const hasContent = !!(effectiveTitle || n.body || n.cta_label);
         // image_url is a WordPress attachment URL generated server-side via wp_get_attachment_image_url() — safe to use in src
         const floatingImageTag = n.image_url ? `<img src="${n.image_url}" alt="">` : '';
         const floatingImageInner = (!hasContent && n.cta_url)
@@ -1030,7 +1038,7 @@
             <div class="nc-floating-header">
                 ${iconHtml}
                 <div style="flex-grow:1;">
-                    <div class="nc-floating-title">${esc(n.title)}</div>
+                    ${effectiveTitle ? `<div class="nc-floating-title">${esc(effectiveTitle)}</div>` : ''}
                     <div class="nc-floating-body">${esc(n.body)}</div>
                     ${n.settings.countdown && n.settings.countdown.enabled ? renderCountdownHTML(n.settings.countdown, true) : ''}
                     ${n.cta_label ? `<a href="${safeUrl(n.cta_url)}" class="nc-floating-btn" style="${btnStyle}"${ctaTargetAttrs(n)}>${esc(n.cta_label)}</a>` : ''}

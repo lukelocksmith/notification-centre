@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.3] - 2026-07-08
+### Added
+- **"Ukryj tytuł na froncie"** checkbox (section 2) — keeps the post title for internal identification in wp-admin only, without rendering it in the sidebar/drawer or floating popup/toast. Combined with image-only mode, this lets a notification's title stay filled in (required by WordPress) while the frontend shows a clean, text-free image.
+- **Max width (Desktop / Mobile)** fields for floating popups/toasts (section "Pływające powiadomienie") — caps the card width independently above/below the 768px breakpoint, on top of the existing fixed-width option.
+
+### Fixed
+- **Notification images no longer get cropped** — floating popup/toast and sidebar/drawer images switched from `object-fit: cover` to `object-fit: contain` inside a fixed-height box, so tall/wide images (including ones with baked-in text) display in full instead of being cut off; letterboxed edges are filled with a subtle neutral background.
+
 ## [1.5.2] - 2026-07-08
 ### Added
 - **Image-only notifications with whole-image link** — leaving Title, Description and CTA label empty (while setting an image and a CTA URL) now renders just the image, with the entire image acting as a clickable link to the CTA URL/target. Works in both the sidebar/drawer list and floating popups/toasts. Clicks on the linked image are tracked via the existing CTA click analytics event.
