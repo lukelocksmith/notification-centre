@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5.2] - 2026-07-08
+### Added
+- **Image-only notifications with whole-image link** — leaving Title, Description and CTA label empty (while setting an image and a CTA URL) now renders just the image, with the entire image acting as a clickable link to the CTA URL/target. Works in both the sidebar/drawer list and floating popups/toasts. Clicks on the linked image are tracked via the existing CTA click analytics event.
+
 ## [1.4.9] - 2026-06-18
 ### Added
 - **CTA link target** — new "Otwieranie linku" option in the CTA section (section 3) lets you choose whether the button opens in the same window (`_self`) or a new tab (`_blank`). The chosen target is rendered as a `target` attribute on the frontend button across all display modes (sidebar/drawer, floating, top bar). New-tab links also get `rel="noopener noreferrer"` for security. Defaults to same window for existing notifications.

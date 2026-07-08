@@ -397,7 +397,7 @@
 
         // CTA click tracking (delegated)
         document.addEventListener('click', function(e) {
-            var ctaBtn = e.target.closest('.nc-btn, .nc-floating-btn, .nc-topbar-btn');
+            var ctaBtn = e.target.closest('.nc-btn, .nc-floating-btn, .nc-topbar-btn, .nc-image-link');
             if (!ctaBtn) return;
             var container = ctaBtn.closest('[data-id]');
             if (container && container.dataset.id) {
@@ -543,8 +543,16 @@
             else el.style.color = text;
 
             const iconHtml = n.icon ? `<div class="nc-item-icon" style="flex-shrink:0; margin-right:15px;">${renderIcon(n.icon, 60)}</div>` : '';
+
+            // Image-only mode: no title/body/CTA label set, just an image (optionally linked via CTA URL)
+            const hasTextContent = !!(n.title || n.body || n.cta_label);
+            const imageOnly = !hasTextContent && !!n.image_url;
+
             // image_url is a WordPress attachment URL generated server-side via wp_get_attachment_image_url() — safe to use in src
-            const imageHtml = n.image_url ? `<img src="${n.image_url}" alt="" style="width:100%; border-radius:6px; margin-bottom:10px; display:block; object-fit:cover; max-height:180px;">` : '';
+            const imageTag = n.image_url ? `<img src="${n.image_url}" alt="" style="width:100%; border-radius:6px; ${imageOnly ? '' : 'margin-bottom:10px;'} display:block; object-fit:cover; max-height:180px;">` : '';
+            const imageHtml = (imageOnly && n.cta_url)
+                ? `<a href="${safeUrl(n.cta_url)}" class="nc-image-link"${ctaTargetAttrs(n)}>${imageTag}</a>`
+                : imageTag;
 
             // Category badge for user notifications (data comes from our own API, safe for innerHTML)
             const userBadgeLabel = isUserNotif ? (String(n.id).indexOf('abandoned') > -1 ? 'Koszyk' : 'Zamówienie') : '';
@@ -557,6 +565,7 @@
                         <div class="nc-item-header">
                             <div style="display:flex; align-items:center;">
                                 ${userBadgeHtml}
+                                ${!isRead && imageOnly ? '<span class="nc-new-badge">Nowe</span>' : ''}
                                 ${n.settings.sidebar_pinned ? '<span title="Przypięte" style="margin-right:5px;">📌</span> ' : ''}
                                 <span class="nc-date" title="${n.date}">${timeAgo(n.date)}</span>
                             </div>
@@ -564,11 +573,13 @@
                         </div>
                         <div class="nc-item-body">
                             ${imageHtml}
+                            ${imageOnly ? '' : `
                             <h4 style="color:inherit;">${!isRead ? '<span class="nc-new-badge">Nowe</span>' : ''}${esc(n.title)}</h4>
                             ${bodyHtml}
                             ${toggleBtn}
                             ${n.settings.countdown && n.settings.countdown.enabled ? renderCountdownHTML(n.settings.countdown, true) : ''}
                             ${n.cta_label ? `<a href="${safeUrl(n.cta_url)}" class="nc-btn" style="${btnStyle}"${ctaTargetAttrs(n)}>${esc(n.cta_label)}</a>` : ''}
+                            `}
                         </div>
                     </div>
                 </div>
@@ -1000,9 +1011,12 @@
 
         const hasContent = !!(n.title || n.body || n.cta_label);
         // image_url is a WordPress attachment URL generated server-side via wp_get_attachment_image_url() — safe to use in src
+        const floatingImageTag = n.image_url ? `<img src="${n.image_url}" alt="">` : '';
+        const floatingImageInner = (!hasContent && n.cta_url)
+            ? `<a href="${safeUrl(n.cta_url)}" class="nc-image-link"${ctaTargetAttrs(n)}>${floatingImageTag}</a>`
+            : floatingImageTag;
         const floatingImageHtml = n.image_url
-            ? `<div class="nc-floating-image-wrap${hasContent ? '' : ' nc-image-only'}">`
-              + `<img src="${n.image_url}" alt=""></div>`
+            ? `<div class="nc-floating-image-wrap${hasContent ? '' : ' nc-image-only'}">${floatingImageInner}</div>`
             : '';
 
         if (!hasContent && n.image_url) {

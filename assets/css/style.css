@@ -460,6 +460,20 @@ body.nc-scroll-lock {
     line-height: 1.2;
 }
 
+/* Whole image acting as a link (image-only notifications) */
+.nc-image-link {
+    display: block;
+    cursor: pointer;
+}
+
+.nc-image-link img {
+    transition: opacity 0.2s;
+}
+
+.nc-image-link:hover img {
+    opacity: 0.9;
+}
+
 .nc-content {
     font-size: 14px;
     font-weight: 400;

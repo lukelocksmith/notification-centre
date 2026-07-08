@@ -271,6 +271,7 @@ class NC_Metaboxes {
                 <label class="nc-label">URL przycisku</label>
                 <input type="text" name="nc_cta_url" value="<?php echo esc_attr($cta_url); ?>" class="regular-text">
                 <p class="description" style="margin-left:184px; margin-top:5px; color:#888;">np. <code>https://google.com</code> lub <code>/kontakt</code></p>
+                <p class="description" style="margin-left:184px; margin-top:5px; color:#888;">Wskazówka: zostaw <strong>Tytuł</strong>, <strong>Opis</strong> i <strong>Etykietę przycisku</strong> puste, a ustaw tylko <strong>Obrazek</strong> (sekcja 6) + ten URL, aby wyświetlić sam obrazek jako klikalny link (bez tekstu i przycisku).</p>
             </p>
             <p>
                 <label class="nc-label">Otwieranie linku</label>
@@ -610,6 +611,7 @@ class NC_Metaboxes {
                         <button type="button" class="button nc-remove-image-btn" style="margin-left:4px; display:none;">Usuń</button>
                     <?php endif; ?>
                     <p class="description" style="margin-top:4px;">Wyświetlany nad treścią w popup i szufladzie. Zalecany format: 16:9.</p>
+                    <p class="description" style="margin-top:4px;">Bez Tytułu/Opisu/Etykiety przycisku obrazek wyświetli się samodzielnie (tzw. "sam obrazek"). Jeśli dodatkowo podasz URL przycisku (sekcja 3), cały obrazek stanie się klikalnym linkiem.</p>
                 </span>
             </p>
 
