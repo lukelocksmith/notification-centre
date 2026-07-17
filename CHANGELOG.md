@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.8.4] - 2026-07-17
+### Fixed
+- **„array offset on null" z Gravity Forms przy usuniętym formularzu** — jeśli w cache'owanej liście `nc_gravityform_ids` został ID formularza, który już nie istnieje, `gravity_form_enqueue_scripts()` odpalało wewnętrzne funkcje GF na `null` i sypało warningami na froncie. Dodano strażnika w pętli enqueue: `GFAPI::get_form()` pomija nieistniejące formularze. Lista i tak jest przeliczana przy zapisie — to zabezpieczenie na wypadek osieroconego ID.
+
+## [1.8.3] - 2026-07-17
+### Changed / UX
+- **Strona ustawień (wp-admin) — nowoczesny restyle** (styl shadcn), scope'owany do `body.nc_notification_page_nc-settings`: nagłówki sekcji + `form-table` jako karty z hairline borderem, inputy/selecty w stylu shadcn z focus-ringiem brand, przycisk „Zapisz" w kolorze brand. Wyłącznie CSS — bez zmian opcji.
+
+## [1.8.2] - 2026-07-17
+### Changed / UX
+- **Ekran edytora powiadomienia (wp-admin) — nowoczesny restyle** (styl shadcn), scope'owany wyłącznie do metaboxa `#nc_settings_box`: każda sekcja jako osobna karta z hairline borderem i cieniem, nagłówki sekcji jako tytuły kart, labelki ułożone pionowo, inputy/selecty/textarea w stylu shadcn z focus-ringiem w kolorze brand, reguły targetowania i przyciski dopracowane. Wyłącznie CSS — zero zmian w markupie, nazwach pól ani logice zapisu.
+
 ## [1.8.1] - 2026-07-17
 ### Changed / UX
 - **Ekran listy powiadomień (wp-admin) — nowoczesny restyle** (styl shadcn), scope'owany wyłącznie do `edit.php?post_type=nc_notification`: tabela jako zaokrąglona karta z hairline borderami i hoverem wierszy, nagłówki jako uppercase-labelki, przycisk „Dodaj powiadomienie" w kolorze brand, kolumny liczbowe wyrównane do prawej z `tabular-nums`. Dodano szary pill `.nc-status-inactive` dla nieopublikowanych powiadomień (Szkic/Kosz).

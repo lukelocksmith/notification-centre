@@ -110,9 +110,19 @@ test.beforeAll(async () => {
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 async function getNotifData(page, postId) {
-    return page.evaluate((id) => {
-        const data = (window.ncData && window.ncData.notifications) || [];
-        return data.find(n => n.id === id) || null;
+    // Since v1.5.0 notification data is no longer baked into window.ncData
+    // (it was frozen into the page cache) — the frontend fetches it from the
+    // REST endpoint instead. Mirror that here: fetch live, find by id.
+    // A unique cache-buster query defeats the browser HTTP cache; the server-side
+    // cache is versioned (nc_cache_version bumps on every create/edit) so the
+    // response reflects the just-created fixture.
+    return page.evaluate(async (id) => {
+        const root  = (window.ncData && window.ncData.root)  || '/wp-json/';
+        const nonce = (window.ncData && window.ncData.nonce) || '';
+        const url   = root + 'nc/v1/notifications?url=' + encodeURIComponent(location.href) + '&pid=0&_=' + Date.now();
+        const res   = await fetch(url, { headers: { 'X-WP-Nonce': nonce } });
+        const data  = await res.json();
+        return (Array.isArray(data) ? data : []).find(n => n.id === id) || null;
     }, postId);
 }
 

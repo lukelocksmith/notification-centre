@@ -3,7 +3,7 @@
  * Plugin Name: Notification Centre
  * Plugin URI:  https://agencyjnie.pl
  * Description: Advanced on-site notification center with OneSignal integration.
- * Version:     1.8.1
+ * Version:     1.8.4
  * Author:      important.is
  * Text Domain: notification-centre
  */
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define Constants
-define( 'NC_VERSION', '1.8.1' );
+define( 'NC_VERSION', '1.8.4' );
 define( 'NC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -183,6 +183,13 @@ class Notification_Centre {
                 // Force GF to output its hooks/init JS even though no form is natively on the page.
                 add_filter( 'gform_force_hooks_js_output', '__return_true' );
                 foreach ( $gf_form_ids as $gf_form_id ) {
+                    // Skip form IDs that no longer exist — a deleted form left in the cached
+                    // list would make gravity_form_enqueue_scripts() run GF internals against a
+                    // null form and emit "array offset on null" warnings. Defensive: the list is
+                    // rebuilt on save, but a stale entry must never break the page.
+                    if ( class_exists( 'GFAPI' ) && ! GFAPI::get_form( $gf_form_id ) ) {
+                        continue;
+                    }
                     // Second arg true = also enqueue the AJAX submission scripts.
                     gravity_form_enqueue_scripts( $gf_form_id, true );
                 }
