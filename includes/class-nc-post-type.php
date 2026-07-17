@@ -9,6 +9,7 @@ class NC_Post_Type {
 	public function __construct() {
 		add_action( 'init', [ $this, 'register_cpt' ] );
         add_action( 'init', [ $this, 'register_taxonomy' ] );
+        add_action( 'init', [ $this, 'register_meta_fields' ] );
         add_action( 'admin_menu', [ $this, 'fix_admin_menu_title' ], 999 );
 
         // Duplicate notification action
@@ -62,6 +63,11 @@ class NC_Post_Type {
 			'menu_position'      => 30,
             'menu_icon'          => 'dashicons-bell',
 			'supports'           => [ 'title', 'custom-fields' ],
+			// SEC-W1 (defense-in-depth): map the CPT's meta caps (edit_post, delete_post,
+			// read_post) through WP's map_meta_cap() so per-object permission checks are
+			// enforced consistently. capability_type stays 'post', so who can manage
+			// notifications does NOT change by default — current editors keep access.
+			'map_meta_cap'       => true,
 		];
 
 		register_post_type( 'nc_notification', $args );
@@ -118,10 +124,142 @@ class NC_Post_Type {
         ]);
     }
 
+    /**
+     * Capability required to manage notifications (duplicate, etc.).
+     *
+     * SEC-W1 (defense-in-depth): defaults to 'edit_posts' so it does NOT change who
+     * can manage notifications today. Site owners who want to restrict the CPT to
+     * admins can filter this to e.g. 'manage_options':
+     *
+     *   add_filter( 'nc_manage_capability', fn() => 'manage_options' );
+     */
+    private function get_manage_capability() {
+        return apply_filters( 'nc_manage_capability', 'edit_posts' );
+    }
+
+    /**
+     * Register meta with sanitize + auth callbacks.
+     *
+     * SEC: the CPT supports 'custom-fields', so nc_description / nc_icon /
+     * nc_title_custom_css could otherwise be written raw through the native Custom
+     * Fields metabox (or the REST meta endpoint), bypassing the sanitization in
+     * NC_Metaboxes::save_custom_meta(). register_meta() forces the sanitize_callback
+     * on every write path and gates it behind an edit_post capability check.
+     */
+    public function register_meta_fields() {
+        register_meta( 'post', 'nc_description', [
+            'object_subtype'    => 'nc_notification',
+            'type'              => 'string',
+            'single'            => true,
+            'sanitize_callback' => 'wp_kses_post',
+            'auth_callback'     => [ $this, 'meta_auth_callback' ],
+            'show_in_rest'      => false,
+        ] );
+
+        register_meta( 'post', 'nc_icon', [
+            'object_subtype'    => 'nc_notification',
+            'type'              => 'string',
+            'single'            => true,
+            'sanitize_callback' => [ $this, 'sanitize_icon_meta' ],
+            'auth_callback'     => [ $this, 'meta_auth_callback' ],
+            'show_in_rest'      => false,
+        ] );
+
+        register_meta( 'post', 'nc_title_custom_css', [
+            'object_subtype'    => 'nc_notification',
+            'type'              => 'string',
+            'single'            => true,
+            'sanitize_callback' => 'sanitize_textarea_field',
+            'auth_callback'     => [ $this, 'meta_auth_callback' ],
+            'show_in_rest'      => false,
+        ] );
+
+        // ── Raw HTML/CSS content mode (v1.8) ──────────────────────────────
+        // nc_content_mode: 'fields' (structured, legacy default) | 'raw'
+        register_meta( 'post', 'nc_content_mode', [
+            'object_subtype'    => 'nc_notification',
+            'type'              => 'string',
+            'single'            => true,
+            'sanitize_callback' => [ $this, 'sanitize_content_mode_meta' ],
+            'auth_callback'     => [ $this, 'meta_auth_callback' ],
+            'show_in_rest'      => false,
+        ] );
+
+        // nc_raw_html: the pasted HTML/CSS. Sanitization is capability-gated:
+        // users with unfiltered_html store it verbatim (so <style>/<script> and
+        // form markup survive); everyone else is run through wp_kses (post set +
+        // <style>) so no script/handler payload can be persisted by a low-priv user
+        // via the native Custom Fields metabox. Mirrors the nc_description guard.
+        register_meta( 'post', 'nc_raw_html', [
+            'object_subtype'    => 'nc_notification',
+            'type'              => 'string',
+            'single'            => true,
+            'sanitize_callback' => [ $this, 'sanitize_raw_html_meta' ],
+            'auth_callback'     => [ $this, 'meta_auth_callback' ],
+            'show_in_rest'      => false,
+        ] );
+
+        // nc_raw_trusted: '1' when saved by a user who had unfiltered_html (front
+        // may then re-execute <script> in the raw body), '' otherwise.
+        register_meta( 'post', 'nc_raw_trusted', [
+            'object_subtype'    => 'nc_notification',
+            'type'              => 'string',
+            'single'            => true,
+            'sanitize_callback' => [ $this, 'sanitize_raw_trusted_meta' ],
+            'auth_callback'     => [ $this, 'meta_auth_callback' ],
+            'show_in_rest'      => false,
+        ] );
+    }
+
+    /**
+     * Content mode whitelist — anything other than 'raw' falls back to 'fields'.
+     */
+    public function sanitize_content_mode_meta( $value ) {
+        return ( $value === 'raw' ) ? 'raw' : 'fields';
+    }
+
+    /**
+     * Raw HTML sanitizer. This runs on EVERY write path (save_post, native Custom
+     * Fields metabox, importers) after WP has already unslashed the value.
+     * Trusted authors (unfiltered_html) keep their markup verbatim; everyone else
+     * is filtered through wp_kses with the 'post' set plus a permitted <style> tag.
+     */
+    public function sanitize_raw_html_meta( $value ) {
+        $value = (string) $value;
+        if ( current_user_can( 'unfiltered_html' ) ) {
+            return $value;
+        }
+        $allowed = wp_kses_allowed_html( 'post' );
+        $allowed['style'] = [ 'type' => true, 'media' => true ];
+        return wp_kses( $value, $allowed );
+    }
+
+    /**
+     * Trusted flag — normalize to '1' or ''.
+     */
+    public function sanitize_raw_trusted_meta( $value ) {
+        return ( $value === '1' || $value === 1 ) ? '1' : '';
+    }
+
+    /**
+     * Only users who can edit the given post may write these meta keys.
+     */
+    public function meta_auth_callback( $allowed, $meta_key, $post_id, $user_id, $cap, $caps ) {
+        return current_user_can( 'edit_post', $post_id );
+    }
+
+    /**
+     * Icon may be a URL, emoji or Dashicons class — sanitize as plain text and
+     * strip any markup so it can never carry an HTML/script payload.
+     */
+    public function sanitize_icon_meta( $value ) {
+        return sanitize_text_field( wp_strip_all_tags( (string) $value ) );
+    }
+
     // ── Duplicate Action ───────────────────────────────
 
     public function add_duplicate_action( $actions, $post ) {
-        if ( $post->post_type !== 'nc_notification' || ! current_user_can( 'edit_posts' ) ) {
+        if ( $post->post_type !== 'nc_notification' || ! current_user_can( $this->get_manage_capability() ) ) {
             return $actions;
         }
 
@@ -135,6 +273,11 @@ class NC_Post_Type {
     }
 
     public function handle_duplicate() {
+        // SEC-S3: enforce capability alongside the nonce check.
+        if ( ! current_user_can( $this->get_manage_capability() ) ) {
+            wp_die( 'Brak uprawnień' );
+        }
+
         if ( ! isset( $_GET['post'] ) ) {
             wp_die( 'Brak ID posta.' );
         }
@@ -215,10 +358,30 @@ class NC_Post_Type {
                 if ( get_post_meta( $post_id, 'nc_show_as_topbar', true ) === '1' ) {
                     $types[] = '<span class="nc-col-badge nc-badge-topbar">Top Bar</span>';
                 }
+                if ( get_post_meta( $post_id, 'nc_content_mode', true ) === 'raw' ) {
+                    $types[] = '<span class="nc-col-badge nc-badge-html" style="background:#2c3338; color:#fff;">HTML</span>';
+                }
                 echo ! empty( $types ) ? implode( ' ', $types ) : '<span style="color:#999;">—</span>';
                 break;
 
             case 'nc_status':
+                // UX-K1: WordPress post status wins first. Date-based Active/Expired/
+                // Scheduled logic below only applies to published notifications, since a
+                // draft/pending/trashed notification is never served regardless of dates.
+                $post_status = get_post_status( $post_id );
+                if ( $post_status !== 'publish' ) {
+                    $status_labels = [
+                        'draft'   => 'Szkic',
+                        'pending' => 'Oczekujące',
+                        'future'  => 'Zaplanowane (WP)',
+                        'trash'   => 'Kosz',
+                        'private' => 'Prywatne',
+                    ];
+                    $label = $status_labels[ $post_status ] ?? $post_status;
+                    echo '<span class="nc-col-status nc-status-inactive">' . esc_html( $label ) . '</span>';
+                    break;
+                }
+
                 $now  = current_time( 'Y-m-d\TH:i' );
                 $from = get_post_meta( $post_id, 'nc_active_from', true );
                 $to   = get_post_meta( $post_id, 'nc_active_to', true );

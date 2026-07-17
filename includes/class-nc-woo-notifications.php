@@ -21,16 +21,12 @@ class NC_Woo_Notifications {
 		add_action( 'woocommerce_cart_updated', [ $this, 'track_cart_activity' ] );
 		add_action( 'nc_abandoned_cart_check', [ $this, 'check_abandoned_carts' ] );
 
-		// Schedule abandoned cart cron if not already scheduled
-		if ( ! wp_next_scheduled( 'nc_abandoned_cart_check' ) ) {
-			wp_schedule_event( time(), 'hourly', 'nc_abandoned_cart_check' );
-		}
-
 		// Daily cleanup of old notifications
 		add_action( 'nc_user_notifications_cleanup', [ $this, 'run_cleanup' ] );
-		if ( ! wp_next_scheduled( 'nc_user_notifications_cleanup' ) ) {
-			wp_schedule_event( time(), 'daily', 'nc_user_notifications_cleanup' );
-		}
+
+		// Cron scheduling (nc_abandoned_cart_check, nc_user_notifications_cleanup) moved to
+		// Notification_Centre::schedule_events() (activation + admin_init) so it no longer
+		// runs wp_next_scheduled() on every request.
 	}
 
 	/* =========================================
@@ -337,6 +333,20 @@ class NC_Woo_Notifications {
 			$cutoff_time
 		) );
 
+		if ( empty( $users ) ) {
+			return;
+		}
+
+		// Rate limit (max 1 abandoned-cart notification per 24h per user): fetch the
+		// set of users already notified in a single query instead of one COUNT() per
+		// candidate user (was an N+1 inside the loop).
+		$notified_ids = $wpdb->get_col(
+			"SELECT DISTINCT user_id FROM {$table}
+			 WHERE event_type = 'abandoned_cart'
+			   AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)"
+		);
+		$notified_ids = array_map( 'intval', (array) $notified_ids );
+
 		foreach ( $users as $row ) {
 			$user_id = (int) $row->user_id;
 
@@ -349,14 +359,7 @@ class NC_Woo_Notifications {
 			}
 
 			// Rate limit: max 1 abandoned cart notification per 24h
-			$recent = $wpdb->get_var( $wpdb->prepare(
-				"SELECT COUNT(*) FROM {$table}
-				 WHERE user_id = %d AND event_type = 'abandoned_cart'
-				   AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)",
-				$user_id
-			) );
-
-			if ( $recent > 0 ) {
+			if ( in_array( $user_id, $notified_ids, true ) ) {
 				continue;
 			}
 

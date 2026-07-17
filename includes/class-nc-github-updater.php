@@ -27,6 +27,53 @@ class NC_GitHub_Updater {
         add_filter( 'plugins_api', array( $this, 'plugin_info' ), 20, 3 );
         add_filter( 'upgrader_post_install', array( $this, 'after_install' ), 10, 3 );
         add_action( 'admin_init', array( $this, 'maybe_clear_cache' ) );
+
+        // SEC-W2: send the GitHub token as an Authorization header when downloading the
+        // package, instead of embedding it as an ?access_token= query param. The package
+        // URL is stored in the update_plugins transient, so a token in the URL would be
+        // persisted to the DB. The header is scoped to this repo's download URLs only.
+        add_filter( 'http_request_args', array( $this, 'authorize_package_download' ), 10, 2 );
+    }
+
+    /**
+     * Attach the GitHub token as a Bearer header for this repo's package downloads.
+     * Scoped by is_our_package_url() so it never leaks to unrelated requests.
+     */
+    public function authorize_package_download( $args, $url ) {
+        $token = $this->get_github_token();
+        if ( empty( $token ) || ! $this->is_our_package_url( $url ) ) {
+            return $args;
+        }
+
+        if ( empty( $args['headers'] ) || ! is_array( $args['headers'] ) ) {
+            $args['headers'] = array();
+        }
+        $args['headers']['Authorization'] = 'Bearer ' . $token;
+
+        return $args;
+    }
+
+    /**
+     * True when $url is a GitHub download URL for this specific repo.
+     */
+    private function is_our_package_url( $url ) {
+        if ( ! is_string( $url ) || '' === $url ) {
+            return false;
+        }
+
+        $needles = array(
+            sprintf( 'api.github.com/repos/%s/%s/', $this->github_user, $this->github_repo ),
+            sprintf( 'github.com/%s/%s/', $this->github_user, $this->github_repo ),
+            sprintf( 'codeload.github.com/%s/%s/', $this->github_user, $this->github_repo ),
+        );
+
+        foreach ( $needles as $needle ) {
+            if ( false !== stripos( $url, $needle ) ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function get_github_token() {
@@ -128,11 +175,10 @@ class NC_GitHub_Updater {
             }
         }
 
-        $token = $this->get_github_token();
-        if ( ! empty( $token ) && ! empty( $url ) ) {
-            $url = add_query_arg( 'access_token', $token, $url );
-        }
-
+        // SEC-W2: do NOT append the token to the URL. This URL is stored in the
+        // update_plugins transient (DB), so a token here would be persisted in plaintext.
+        // Authentication is handled via the Authorization header in
+        // authorize_package_download() at download time instead.
         return $url;
     }
 

@@ -182,9 +182,17 @@ class NC_Rest_Api {
             'user_id' => $user_id
         ];
 
-        // Transient cache (5 min) keyed by context hash
+        // Transient cache (5 min). The cache KEY intentionally uses only the URL *path*
+        // (no query string), so /page?a=1, /page?a=2, … all share one transient instead
+        // of spawning an unbounded number of them (cache-busting + wp_options bloat).
+        // Rule matching inside NC_Logic still receives the full $context['url'].
+        $path_for_key = wp_parse_url( $context['url'], PHP_URL_PATH ) ?: '/';
         $version = get_option( 'nc_cache_version', 0 );
-        $cache_key = 'nc_api_' . md5( $version . wp_json_encode( $context ) );
+        $cache_key = 'nc_api_' . md5( $version . wp_json_encode( [
+            'path'    => $path_for_key,
+            'post_id' => $context['post_id'],
+            'user_id' => $user_id,
+        ] ) );
         $notifications = get_transient( $cache_key );
 
         if ( $notifications === false ) {

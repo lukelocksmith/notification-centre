@@ -36,3 +36,139 @@
 .column-nc_audience { width: 100px; }
 .column-nc_views    { width: 90px; }
 .column-nc_ctr      { width: 70px; }
+
+/* ============================================================================
+   MODERN RESTYLE LAYER — admin list table pills (shadcn / Radix inspired)
+   Additive layer appended last so it wins on source order. Refines the badge
+   and status pills: softer radius, tuned padding/weight, an accent dot and a
+   hairline ring for crisper separation on the WP admin background.
+   ============================================================================ */
+
+.nc-col-badge,
+.nc-col-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 7px;
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: 0.01em;
+    box-shadow: inset 0 0 0 1px rgba(16, 24, 40, 0.06);
+}
+
+/* Small leading dot on status pills for quick at-a-glance scanning */
+.nc-col-status::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+}
+
+.nc-badge-sidebar  { background: #eaf1fe; color: #1a56db; }
+.nc-badge-floating { background: #fef4d6; color: #92400e; }
+.nc-badge-topbar   { background: #d9f6e6; color: #05704a; }
+
+.nc-status-active    { background: #d9f6e6; color: #05704a; }
+.nc-status-scheduled { background: #fef4d6; color: #92400e; }
+.nc-status-expired   { background: #fde5e5; color: #991b1b; }
+
+/* Spacing when multiple type pills stack in a single cell */
+.column-nc_type .nc-col-badge {
+    margin: 1px 3px 1px 0;
+}
+/* Grey pill for non-published notifications (draft/trash/etc.) — see nc_status column */
+.nc-status-inactive { background: #eef0f3; color: #4b5563; }
+
+/* ============================================================================
+   ADMIN LIST SCREEN — modern (shadcn-inspired) restyle
+   Scoped to the notification list screen only (body.post-type-nc_notification.edit-php)
+   so nothing else in wp-admin is affected. Purely cosmetic overrides.
+   ============================================================================ */
+body.post-type-nc_notification.edit-php {
+    --nc-a-border: #e5e7eb;
+    --nc-a-muted: #6b7280;
+    --nc-a-primary: #e11d35;
+}
+/* Primary "Add New" action as a solid brand button */
+body.post-type-nc_notification.edit-php .page-title-action {
+    background: var(--nc-a-primary);
+    border-color: var(--nc-a-primary);
+    color: #fff;
+    border-radius: 9px;
+    padding: 7px 15px;
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(16,24,40,.08);
+    transition: filter .15s ease;
+}
+body.post-type-nc_notification.edit-php .page-title-action:hover,
+body.post-type-nc_notification.edit-php .page-title-action:focus {
+    background: var(--nc-a-primary);
+    border-color: var(--nc-a-primary);
+    color: #fff;
+    filter: brightness(1.07);
+    box-shadow: 0 1px 2px rgba(16,24,40,.08);
+}
+body.post-type-nc_notification.edit-php .wp-heading-inline {
+    font-weight: 680;
+    letter-spacing: -.02em;
+}
+
+/* Table as a rounded, bordered card */
+body.post-type-nc_notification.edit-php .wp-list-table {
+    border: 1px solid var(--nc-a-border);
+    border-radius: 12px;
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(16,24,40,.05);
+}
+body.post-type-nc_notification.edit-php .wp-list-table thead th,
+body.post-type-nc_notification.edit-php .wp-list-table thead td {
+    background: #f8f9fb;
+    border-bottom: 1px solid var(--nc-a-border);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: .05em;
+    color: var(--nc-a-muted);
+    font-weight: 600;
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+body.post-type-nc_notification.edit-php .wp-list-table tbody td,
+body.post-type-nc_notification.edit-php .wp-list-table tbody th {
+    padding-top: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #f1f2f4;
+    vertical-align: middle;
+}
+body.post-type-nc_notification.edit-php .wp-list-table tbody tr:last-child td,
+body.post-type-nc_notification.edit-php .wp-list-table tbody tr:last-child th {
+    border-bottom: 0;
+}
+body.post-type-nc_notification.edit-php .wp-list-table tbody tr:hover {
+    background: #f8f9fb;
+}
+body.post-type-nc_notification.edit-php .wp-list-table .row-title {
+    font-weight: 620;
+    letter-spacing: -.01em;
+}
+/* Numeric columns align right with tabular figures */
+body.post-type-nc_notification.edit-php .column-nc_views,
+body.post-type-nc_notification.edit-php .column-nc_ctr {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+/* Softer search + filter controls */
+body.post-type-nc_notification.edit-php .search-box input[type="search"],
+body.post-type-nc_notification.edit-php .tablenav select {
+    border-radius: 8px;
+    border-color: var(--nc-a-border);
+}
+body.post-type-nc_notification.edit-php .subsubsub {
+    margin-bottom: 10px;
+}

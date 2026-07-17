@@ -3,7 +3,7 @@
  * Plugin Name: Notification Centre
  * Plugin URI:  https://agencyjnie.pl
  * Description: Advanced on-site notification center with OneSignal integration.
- * Version:     1.5.5
+ * Version:     1.8.1
  * Author:      important.is
  * Text Domain: notification-centre
  */
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define Constants
-define( 'NC_VERSION', '1.5.5' );
+define( 'NC_VERSION', '1.8.1' );
 define( 'NC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -67,6 +67,15 @@ class Notification_Centre {
         
         // Render Top Bar at the beginning of body for proper positioning
         add_action( 'wp_body_open', [ $this, 'render_topbar' ] );
+
+        // Recompute cached form-ID lists on save (moved off the frontend — see refresh_form_id_cache).
+        // Must run on the GENERIC save_post at priority > 10: WP fires save_post_{type} BEFORE the
+        // generic save_post, and the metabox writes nc_description on generic save_post @10 — so a
+        // type-specific hook would scan the STALE description. @20 runs after the meta is written.
+        add_action( 'save_post', [ $this, 'refresh_form_id_cache' ], 20 );
+        // Keep the lists fresh when a notification is trashed/restored (changes the publish set).
+        add_action( 'trashed_post', [ $this, 'refresh_form_id_cache' ] );
+        add_action( 'untrashed_post', [ $this, 'refresh_form_id_cache' ] );
 	}
 
     private function should_skip_frontend() {
@@ -91,33 +100,20 @@ class Notification_Centre {
 
         // Check for Fluent Forms in active notifications and enqueue necessary assets
         if ( function_exists( 'fluentFormMix' ) ) {
-            // Cache form IDs from notifications (avoids WP_Query search on every page load)
-            $form_ids = get_transient( 'nc_fluentform_ids' );
+            // Form IDs are precomputed on save (refresh_form_id_cache) and stored in a
+            // non-autoloaded option. The frontend only READS the option here — no WP_Query.
+            $form_ids = get_option( 'nc_fluentform_ids', false );
             if ( $form_ids === false ) {
-                // nc_notification doesn't support 'editor', so the shortcode lives in the
-                // nc_description postmeta, not post_content — search meta, not post content.
-                $ff_query = new WP_Query( [
-                    'post_type'      => 'nc_notification',
-                    'post_status'    => 'publish',
-                    'posts_per_page' => -1,
-                    'fields'         => 'ids',
-                    'meta_query'     => [
-                        [
-                            'key'     => 'nc_description',
-                            'value'   => '[fluentform',
-                            'compare' => 'LIKE',
-                        ],
-                    ],
-                ] );
-                $form_ids = [];
-                foreach ( $ff_query->posts as $notification_id ) {
-                    $description = get_post_meta( $notification_id, 'nc_description', true );
-                    if ( preg_match_all( '/\[fluentform\s+[^\]]*id=["\']?(\d+)["\']?[^\]]*\]/i', $description, $matches ) ) {
-                        $form_ids = array_merge( $form_ids, $matches[1] );
-                    }
+                // Fallback: option not yet built (first run / never saved). Compute once,
+                // keep the transient as a short-lived cache so the frontend stays fast.
+                $form_ids = get_transient( 'nc_fluentform_ids' );
+                if ( $form_ids === false ) {
+                    $form_ids = $this->scan_notification_form_ids(
+                        '[fluentform',
+                        '/\[fluentform\s+[^\]]*id=["\']?(\d+)["\']?[^\]]*\]/i'
+                    );
+                    set_transient( 'nc_fluentform_ids', $form_ids, HOUR_IN_SECONDS );
                 }
-                $form_ids = array_unique( $form_ids );
-                set_transient( 'nc_fluentform_ids', $form_ids, HOUR_IN_SECONDS );
             }
 
             if ( ! empty( $form_ids ) ) {
@@ -161,7 +157,38 @@ class Notification_Centre {
                 }
             }
         }
-        
+
+        // Check for Gravity Forms in active notifications and enqueue GF core assets.
+        // Popups appear on pages that have no GF form natively, so GF's scripts
+        // (gform.submission, spinner, gform_post_render machinery) would not load —
+        // without them the re-executed inline form scripts have nothing to hook into.
+        // Mirrors the Fluent Forms block above: shortcode lives in nc_description postmeta.
+        if ( class_exists( 'GFForms' ) && function_exists( 'gravity_form_enqueue_scripts' ) ) {
+            // Precomputed on save; frontend only reads the non-autoloaded option.
+            $gf_form_ids = get_option( 'nc_gravityform_ids', false );
+            if ( $gf_form_ids === false ) {
+                // Fallback: option not yet built (first run / never saved).
+                $gf_form_ids = get_transient( 'nc_gravityform_ids' );
+                if ( $gf_form_ids === false ) {
+                    // Matches both [gravityform id="X"] and [gravityforms id="X"].
+                    $gf_form_ids = array_values( array_unique( array_map( 'intval', $this->scan_notification_form_ids(
+                        '[gravityform',
+                        '/\[gravityforms?\s+[^\]]*id=["\']?(\d+)["\']?[^\]]*\]/i'
+                    ) ) ) );
+                    set_transient( 'nc_gravityform_ids', $gf_form_ids, HOUR_IN_SECONDS );
+                }
+            }
+
+            if ( ! empty( $gf_form_ids ) ) {
+                // Force GF to output its hooks/init JS even though no form is natively on the page.
+                add_filter( 'gform_force_hooks_js_output', '__return_true' );
+                foreach ( $gf_form_ids as $gf_form_id ) {
+                    // Second arg true = also enqueue the AJAX submission scripts.
+                    gravity_form_enqueue_scripts( $gf_form_id, true );
+                }
+            }
+        }
+
         // Get all options at once (cached)
         $options = $this->get_cached_options();
         
@@ -181,18 +208,7 @@ class Notification_Centre {
         $radius_var = $outer_radius . 'px';
         $item_radius_var = $inner_radius . 'px';
         $bell_radius_var = ($radius_type === 'rounded') ? '50%' : $item_radius_var;
-        
-        // Toast Position
-        $toast_pos = $options['nc_toast_position'] ?: 'top-right';
-        $t_top = 'auto'; $t_bottom = 'auto'; $t_left = 'auto'; $t_right = 'auto';
-        
-        switch($toast_pos) {
-            case 'top-left': $t_top = '20px'; $t_left = '20px'; break;
-            case 'bottom-right': $t_bottom = '20px'; $t_right = '20px'; break;
-            case 'bottom-left': $t_bottom = '20px'; $t_left = '20px'; break;
-            case 'top-right': default: $t_top = '20px'; $t_right = '20px'; break;
-        }
-        
+
         // Colors with defaults
         $nc_bg = $options['nc_global_bg'] ?: '#ffffff';
         $nc_text = $options['nc_global_text'] ?: '#1d1d1f';
@@ -222,12 +238,8 @@ class Notification_Centre {
         
         $custom_css = ":root { 
             --nc-drawer-width: {$drawer_width}px;
-            --nc-radius: {$radius_var}; 
+            --nc-radius: {$radius_var};
             --nc-item-radius: {$item_radius_var};
-            --nc-toast-top: {$t_top};
-            --nc-toast-bottom: {$t_bottom};
-            --nc-toast-left: {$t_left};
-            --nc-toast-right: {$t_right};
             --nc-bg: {$nc_bg};
             --nc-text: {$nc_text};
             --nc-border: {$nc_border};
@@ -320,9 +332,15 @@ class Notification_Centre {
         if ( $options === false ) {
             global $wpdb;
 
-            // Get all nc_ options in single query
+            // Get all nc_ options in single query.
+            // esc_like() escapes the underscore so it matches literally instead of as a
+            // single-char wildcard (a bare "nc_%" would scan far more rows than intended).
+            $like = $wpdb->esc_like( 'nc_' ) . '%';
             $results = $wpdb->get_results(
-                "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE 'nc_%'",
+                $wpdb->prepare(
+                    "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s",
+                    $like
+                ),
                 OBJECT
             );
 
@@ -338,7 +356,6 @@ class Notification_Centre {
         static $defaults = [
             'nc_radius_type'           => 'rounded',
             'nc_radius_custom'         => '20',
-            'nc_toast_position'        => 'top-right',
             'nc_global_bg'             => '#ffffff',
             'nc_global_text'           => '#1d1d1f',
             'nc_global_border'         => '#e5e5e5',
@@ -390,11 +407,10 @@ class Notification_Centre {
             new NC_Woo_Notifications();
         }
 
-        // Cleanup expired API transients (prevents wp_options bloat)
+        // Cleanup expired API transients (prevents wp_options bloat).
+        // Scheduling lives in schedule_events() (activation + admin_init fallback),
+        // not here — this ran wp_next_scheduled() on every request.
         add_action( 'nc_cleanup_expired_transients', [ $this, 'cleanup_expired_transients' ] );
-        if ( ! wp_next_scheduled( 'nc_cleanup_expired_transients' ) ) {
-            wp_schedule_event( time(), 'daily', 'nc_cleanup_expired_transients' );
-        }
 
         // Admin assets — only on NC screens (post type + settings)
         add_action('admin_enqueue_scripts', function( $hook ) {
@@ -457,15 +473,121 @@ class Notification_Centre {
     }
 
     /**
-     * Remove expired nc_api_* transients from wp_options to prevent bloat.
+     * Remove expired nc_api_* and nc_rate_* transients from wp_options to prevent bloat.
+     * Underscores are escaped so LIKE matches them literally instead of as wildcards.
      */
     public function cleanup_expired_transients() {
         global $wpdb;
+
+        $api_like  = $wpdb->esc_like( '_transient_timeout_nc_api_' ) . '%';
+        $rate_like = $wpdb->esc_like( '_transient_timeout_nc_rate_' ) . '%';
+
         $wpdb->query(
-            "DELETE a, b FROM {$wpdb->options} a
-             LEFT JOIN {$wpdb->options} b ON b.option_name = REPLACE(a.option_name, '_timeout_', '_')
-             WHERE a.option_name LIKE '_transient_timeout_nc_api_%' AND a.option_value < UNIX_TIMESTAMP()"
+            $wpdb->prepare(
+                "DELETE a, b FROM {$wpdb->options} a
+                 LEFT JOIN {$wpdb->options} b ON b.option_name = REPLACE(a.option_name, '_timeout_', '_')
+                 WHERE ( a.option_name LIKE %s OR a.option_name LIKE %s )
+                   AND a.option_value < UNIX_TIMESTAMP()",
+                $api_like,
+                $rate_like
+            )
         );
+    }
+
+    /**
+     * Scan published notifications for a form shortcode and return the matched form IDs.
+     * Used both by the on-save recompute and the first-run frontend fallback.
+     *
+     * @param string $shortcode_prefix e.g. '[fluentform' (LIKE needle in nc_description meta)
+     * @param string $regex            capturing regex extracting the numeric form id
+     * @return array
+     */
+    private function scan_notification_form_ids( $shortcode_prefix, $regex ) {
+        // The shortcode can live in either the structured description (nc_description)
+        // or the raw HTML/CSS body (nc_raw_html, content mode 'raw') — search both.
+        $query = new WP_Query( [
+            'post_type'      => 'nc_notification',
+            'post_status'    => 'publish',
+            'posts_per_page' => -1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+            'meta_query'     => [
+                'relation' => 'OR',
+                [
+                    'key'     => 'nc_description',
+                    'value'   => $shortcode_prefix,
+                    'compare' => 'LIKE',
+                ],
+                [
+                    'key'     => 'nc_raw_html',
+                    'value'   => $shortcode_prefix,
+                    'compare' => 'LIKE',
+                ],
+            ],
+        ] );
+
+        $ids = [];
+        foreach ( $query->posts as $notification_id ) {
+            $haystack  = (string) get_post_meta( $notification_id, 'nc_description', true );
+            $haystack .= "\n" . (string) get_post_meta( $notification_id, 'nc_raw_html', true );
+            if ( preg_match_all( $regex, $haystack, $matches ) ) {
+                $ids = array_merge( $ids, $matches[1] );
+            }
+        }
+
+        return array_values( array_unique( $ids ) );
+    }
+
+    /**
+     * Recompute the Fluent Forms / Gravity Forms ID lists and store them in
+     * non-autoloaded options. Runs on save_post_nc_notification so the frontend
+     * never has to run the meta_query scan itself.
+     */
+    public function refresh_form_id_cache( $post_id = 0 ) {
+        // Skip autosaves/revisions — no meaningful content change to index.
+        if ( ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) || wp_is_post_revision( $post_id ) ) {
+            return;
+        }
+        // Only react to notification saves/trashes (save_post fires for every post type).
+        if ( $post_id && get_post_type( $post_id ) !== 'nc_notification' ) {
+            return;
+        }
+
+        $fluent = $this->scan_notification_form_ids(
+            '[fluentform',
+            '/\[fluentform\s+[^\]]*id=["\']?(\d+)["\']?[^\]]*\]/i'
+        );
+        update_option( 'nc_fluentform_ids', $fluent, false );
+
+        $gravity = array_values( array_unique( array_map( 'intval', $this->scan_notification_form_ids(
+            '[gravityform',
+            '/\[gravityforms?\s+[^\]]*id=["\']?(\d+)["\']?[^\]]*\]/i'
+        ) ) ) );
+        update_option( 'nc_gravityform_ids', $gravity, false );
+
+        // Drop any stale short-lived transient fallbacks so they can't shadow the fresh options.
+        delete_transient( 'nc_fluentform_ids' );
+        delete_transient( 'nc_gravityform_ids' );
+    }
+
+    /**
+     * Register all NC cron schedules. Called from register_activation_hook and,
+     * as a safe fallback for already-active installs, from admin_init (admin-only,
+     * so frontend requests no longer pay the wp_next_scheduled() cost).
+     */
+    public static function schedule_events() {
+        $events = [
+            'nc_hourly_cache_purge'         => 'hourly',
+            'nc_cleanup_expired_transients' => 'daily',
+            'nc_cleanup_old_events'         => 'daily',
+            'nc_abandoned_cart_check'       => 'hourly',
+            'nc_user_notifications_cleanup' => 'daily',
+        ];
+        foreach ( $events as $hook => $recurrence ) {
+            if ( ! wp_next_scheduled( $hook ) ) {
+                wp_schedule_event( time(), $recurrence, $hook );
+            }
+        }
     }
 }
 
@@ -475,13 +597,16 @@ Notification_Centre::get_instance();
 register_activation_hook( __FILE__, [ 'NC_Analytics', 'create_table' ] );
 register_activation_hook( __FILE__, [ 'NC_Woo_Notifications', 'create_table' ] );
 
-// Schedule hourly cache purge for time-based notification expiry
-register_activation_hook( __FILE__, function() {
-	if ( ! wp_next_scheduled( 'nc_hourly_cache_purge' ) ) {
-		wp_schedule_event( time(), 'hourly', 'nc_hourly_cache_purge' );
-	}
-} );
+// Register all cron schedules on activation, plus an admin-only fallback for
+// installs that were already active before scheduling moved out of the request path.
+register_activation_hook( __FILE__, [ 'Notification_Centre', 'schedule_events' ] );
+add_action( 'admin_init', [ 'Notification_Centre', 'schedule_events' ] );
+
+// Hourly: bump the cache version so time-based notifications expire. Bumping
+// nc_cache_version is enough — the front fetches data via AJAX from the REST
+// endpoint's own 5-min cache, so a site-wide litespeed_purge_all here is
+// unnecessary. Full-page purge stays only where real content changes
+// (invalidate_notification_caches on save).
 add_action( 'nc_hourly_cache_purge', function() {
 	update_option( 'nc_cache_version', time(), false );
-	do_action( 'litespeed_purge_all' );
 } );

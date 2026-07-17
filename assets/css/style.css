@@ -1721,3 +1721,526 @@ body.nc-topbar-active.nc-has-sticky-topbar .nc-region-top-left {
         font-size: 16px;
     }
 }
+
+/* ============================================================================
+   MODERN RESTYLE LAYER (shadcn / Radix inspired)
+   ----------------------------------------------------------------------------
+   Additive layer, appended last so it wins on source order over the base rules
+   above. Improves STRUCTURE only — radii, layered shadows, an 8pt spacing scale,
+   typography, button/close states, focus-visible rings and tasteful motion.
+   User-chosen colors keep flowing through the --nc-* variables and are never
+   overridden here. Class names and IDs are untouched (PHP/JS depend on them).
+   ============================================================================ */
+
+:root {
+    /* Soft, consistent radius scale (~8–14px) */
+    --nc-r-sm: 8px;
+    --nc-r-md: 10px;
+    --nc-r-lg: 14px;
+    --nc-r-pill: 999px;
+
+    /* 8pt spacing scale */
+    --nc-sp-1: 4px;
+    --nc-sp-2: 8px;
+    --nc-sp-3: 12px;
+    --nc-sp-4: 16px;
+    --nc-sp-5: 20px;
+    --nc-sp-6: 24px;
+
+    /* Layered, subtle elevation (not heavy) */
+    --nc-shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+    --nc-shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
+    --nc-shadow-md: 0 6px 16px -6px rgba(16, 24, 40, 0.12), 0 2px 6px -2px rgba(16, 24, 40, 0.06);
+    --nc-shadow-lg: 0 16px 40px -12px rgba(16, 24, 40, 0.18), 0 4px 12px -6px rgba(16, 24, 40, 0.10);
+    --nc-shadow-xl: 0 28px 64px -16px rgba(16, 24, 40, 0.26), 0 10px 24px -12px rgba(16, 24, 40, 0.14);
+
+    /* Motion */
+    --nc-ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --nc-dur: 0.2s;
+
+    /* Hairline surface border (works on light surfaces; user bg still shows through) */
+    --nc-hairline: rgba(16, 24, 40, 0.08);
+    --nc-hairline-strong: rgba(16, 24, 40, 0.12);
+
+    /* Neutral hover wash driven by text color so it adapts to light/dark surfaces */
+    --nc-hover-wash: color-mix(in srgb, currentColor 7%, transparent);
+    --nc-hover-wash-strong: color-mix(in srgb, currentColor 12%, transparent);
+    --nc-focus-ring: var(--nc-primary, #007AFF);
+}
+
+/* ---- Typography polish -------------------------------------------------- */
+.nc-drawer,
+.nc-toast,
+.nc-floating,
+.nc-topbar {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+.nc-drawer-header h3 {
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+}
+
+.nc-item-body h4 {
+    font-size: 14px;
+    font-weight: 620;
+    letter-spacing: -0.005em;
+    line-height: 1.3;
+}
+
+.nc-content {
+    font-size: 13.5px;
+    line-height: 1.5;
+    letter-spacing: -0.002em;
+    color: var(--nc-text, #1d1d1f);
+    opacity: 0.82;
+}
+
+.nc-item-header {
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    align-items: center;
+    margin-bottom: var(--nc-sp-1);
+}
+
+/* ---- Bell & badge ------------------------------------------------------- */
+.nc-bell-container {
+    border-radius: var(--nc-bell-radius, var(--nc-r-md));
+    transition: background var(--nc-dur) var(--nc-ease), transform var(--nc-dur) var(--nc-ease);
+}
+
+.nc-bell-container:active {
+    transform: scale(0.94);
+}
+
+.nc-badge {
+    font-size: 9px;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    width: auto;
+    padding: 0 4px;
+    top: -5px;
+    right: -5px;
+    letter-spacing: -0.02em;
+    /* Ring separates the badge from whatever sits behind the bell */
+    box-shadow: 0 0 0 2px var(--nc-bg, #fff);
+}
+
+.nc-badge.dot {
+    min-width: 9px;
+    width: 9px;
+    height: 9px;
+    padding: 0;
+    top: 0;
+    right: 0;
+}
+
+/* ---- Drawer surface ----------------------------------------------------- */
+.nc-drawer {
+    border: 1px solid var(--nc-hairline);
+    border-radius: var(--nc-radius, var(--nc-r-lg));
+    box-shadow: var(--nc-shadow-xl);
+    backdrop-filter: blur(24px) saturate(1.4);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+}
+
+.nc-drawer-header {
+    padding: var(--nc-sp-4) var(--nc-sp-5);
+    background: transparent;
+    border-bottom: 1px solid var(--nc-hairline);
+}
+
+.nc-drawer-content {
+    padding: var(--nc-sp-3);
+    scrollbar-color: var(--nc-hairline-strong) transparent;
+}
+
+.nc-drawer-content::-webkit-scrollbar-thumb {
+    background-color: var(--nc-hairline-strong);
+    border-radius: var(--nc-r-pill);
+}
+
+.nc-drawer-footer {
+    padding: var(--nc-sp-3);
+    background: transparent;
+    border-top: 1px solid var(--nc-hairline);
+}
+
+.nc-overlay {
+    background: rgba(16, 24, 40, 0.28);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+}
+
+/* ---- List items --------------------------------------------------------- */
+.nc-item {
+    border: 1px solid var(--nc-hairline);
+    border-radius: var(--nc-item-radius, var(--nc-r-md));
+    margin-bottom: var(--nc-sp-2);
+    padding: var(--nc-sp-3);
+    box-shadow: var(--nc-shadow-xs);
+    transition: background var(--nc-dur) var(--nc-ease),
+                border-color var(--nc-dur) var(--nc-ease),
+                box-shadow var(--nc-dur) var(--nc-ease),
+                transform var(--nc-dur) var(--nc-ease);
+}
+
+.nc-item:hover {
+    box-shadow: var(--nc-shadow-md);
+    border-color: var(--nc-hairline-strong);
+    transform: none;
+}
+
+.nc-item.unread {
+    box-shadow: var(--nc-shadow-sm);
+}
+
+/* Subtle unread accent rail (uses primary/accent, not the user bg/text) */
+.nc-item.unread::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 10px;
+    bottom: 10px;
+    width: 3px;
+    border-radius: var(--nc-r-pill);
+    background: var(--nc-primary, #007AFF);
+    opacity: 0.9;
+}
+
+.nc-item.read {
+    opacity: 0.62;
+    filter: none;
+}
+
+.nc-item.read:hover {
+    opacity: 0.85;
+}
+
+/* ---- Badges / pills ----------------------------------------------------- */
+.nc-user-badge,
+.nc-new-badge {
+    border-radius: var(--nc-r-sm);
+    letter-spacing: 0.03em;
+    line-height: 1.5;
+}
+
+/* ---- Primary button ----------------------------------------------------- */
+.nc-btn,
+.nc-btn-toast,
+.nc-floating-btn {
+    border-radius: var(--nc-item-radius, var(--nc-r-md));
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    line-height: 1.2;
+    box-shadow: var(--nc-shadow-xs);
+    transition: transform var(--nc-dur) var(--nc-ease),
+                box-shadow var(--nc-dur) var(--nc-ease),
+                filter var(--nc-dur) var(--nc-ease);
+}
+
+.nc-btn:hover,
+.nc-btn-toast:hover,
+.nc-floating-btn:hover {
+    /* Colour-independent hover: gentle lift + slight darken of whatever bg is set */
+    transform: translateY(-1px);
+    box-shadow: var(--nc-shadow-md);
+    filter: brightness(0.96);
+}
+
+.nc-btn:active,
+.nc-btn-toast:active,
+.nc-floating-btn:active {
+    transform: translateY(0);
+    box-shadow: var(--nc-shadow-xs);
+    filter: brightness(0.92);
+}
+
+/* ---- Secondary / ghost button variants (available for use, additive) ---- */
+.nc-btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: var(--nc-hover-wash);
+    color: var(--nc-text, #1d1d1f);
+    padding: 8px 14px;
+    border: 1px solid var(--nc-hairline);
+    border-radius: var(--nc-item-radius, var(--nc-r-md));
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background var(--nc-dur) var(--nc-ease), border-color var(--nc-dur) var(--nc-ease);
+}
+
+.nc-btn-secondary:hover {
+    background: var(--nc-hover-wash-strong);
+    border-color: var(--nc-hairline-strong);
+}
+
+.nc-btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: transparent;
+    color: var(--nc-text, #1d1d1f);
+    padding: 8px 12px;
+    border: none;
+    border-radius: var(--nc-r-sm);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background var(--nc-dur) var(--nc-ease);
+}
+
+.nc-btn-ghost:hover {
+    background: var(--nc-hover-wash);
+}
+
+/* "Mark all read" and expand toggle read as quiet ghost/text actions */
+#nc-mark-all-read {
+    padding: 6px 12px;
+    border-radius: var(--nc-r-sm);
+    font-weight: 600;
+    transition: background var(--nc-dur) var(--nc-ease), color var(--nc-dur) var(--nc-ease);
+}
+
+#nc-mark-all-read:hover {
+    background: var(--nc-hover-wash);
+}
+
+.nc-expand-btn {
+    font-weight: 600;
+    letter-spacing: -0.005em;
+}
+
+.nc-expand-btn:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+/* ---- Close / dismiss controls (consistent round buttons) ---------------- */
+.nc-dismiss,
+.nc-toast-close,
+.nc-floating-close,
+.nc-popup-close,
+.nc-close-drawer,
+.nc-topbar-close {
+    border-radius: var(--nc-r-pill);
+    transition: background var(--nc-dur) var(--nc-ease),
+                color var(--nc-dur) var(--nc-ease),
+                transform var(--nc-dur) var(--nc-ease),
+                opacity var(--nc-dur) var(--nc-ease);
+}
+
+.nc-dismiss:hover,
+.nc-toast-close:hover,
+.nc-floating-close:hover,
+.nc-popup-close:hover,
+.nc-close-drawer:hover {
+    background: var(--nc-hover-wash-strong);
+}
+
+.nc-dismiss:active,
+.nc-toast-close:active,
+.nc-floating-close:active,
+.nc-popup-close:active,
+.nc-close-drawer:active,
+.nc-topbar-close:active {
+    transform: scale(0.9);
+}
+
+/* ---- Countdown ---------------------------------------------------------- */
+.nc-countdown-segment {
+    background: var(--nc-countdown-bg, var(--nc-hover-wash));
+    border-radius: var(--nc-r-sm);
+    min-width: 44px;
+}
+
+.nc-countdown-value {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+}
+
+.nc-countdown-unit {
+    letter-spacing: 0.06em;
+}
+
+/* ---- Top bar ------------------------------------------------------------ */
+.nc-topbar {
+    box-shadow: var(--nc-shadow-sm);
+}
+
+.nc-topbar.nc-topbar-compact {
+    border-radius: var(--nc-radius, var(--nc-r-lg));
+    box-shadow: var(--nc-shadow-md);
+}
+
+.nc-topbar-title {
+    letter-spacing: -0.01em;
+}
+
+.nc-topbar-btn {
+    border-radius: var(--nc-r-sm);
+    font-weight: 650;
+    letter-spacing: -0.005em;
+    transition: transform var(--nc-dur) var(--nc-ease), filter var(--nc-dur) var(--nc-ease);
+}
+
+.nc-topbar-btn:hover {
+    transform: translateY(-1px);
+    filter: brightness(0.97);
+    opacity: 1;
+}
+
+.nc-topbar-btn:active {
+    transform: translateY(0);
+}
+
+.nc-topbar-dot {
+    transition: background var(--nc-dur) var(--nc-ease), transform var(--nc-dur) var(--nc-ease);
+}
+
+.nc-topbar-dot.active {
+    transform: scale(1.15);
+}
+
+/* ---- Floating card / toast / center popup ------------------------------- */
+.nc-floating {
+    border: 1px solid var(--nc-hairline);
+    border-radius: var(--nc-item-radius, var(--nc-r-lg));
+    box-shadow: var(--nc-shadow-lg);
+    padding: var(--nc-sp-4);
+    gap: var(--nc-sp-2);
+}
+
+.nc-floating-title {
+    font-weight: 650;
+    letter-spacing: -0.01em;
+}
+
+.nc-floating.nc-pos-center {
+    border-radius: var(--nc-radius, 18px);
+    box-shadow: var(--nc-shadow-xl);
+}
+
+.nc-pos-center-overlay {
+    background: rgba(16, 24, 40, 0.42);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+.nc-popup {
+    border: 1px solid var(--nc-hairline);
+    box-shadow: var(--nc-shadow-xl);
+}
+
+.nc-toast {
+    border-radius: var(--nc-item-radius, var(--nc-r-lg));
+    box-shadow: var(--nc-shadow-lg);
+}
+
+/* Round the floating image wrap to match the refined card radius */
+.nc-floating-image-wrap {
+    border-radius: var(--nc-item-radius, var(--nc-r-lg)) var(--nc-item-radius, var(--nc-r-lg)) 0 0;
+}
+
+/* ---- Accessibility: visible keyboard focus ------------------------------ */
+.nc-bell-container:focus-visible,
+.nc-drawer a:focus-visible,
+.nc-btn:focus-visible,
+.nc-btn-toast:focus-visible,
+.nc-btn-secondary:focus-visible,
+.nc-btn-ghost:focus-visible,
+.nc-floating-btn:focus-visible,
+.nc-topbar-btn:focus-visible,
+.nc-image-link:focus-visible,
+.nc-dismiss:focus-visible,
+.nc-toast-close:focus-visible,
+.nc-floating-close:focus-visible,
+.nc-popup-close:focus-visible,
+.nc-close-drawer:focus-visible,
+.nc-topbar-close:focus-visible,
+.nc-expand-btn:focus-visible,
+#nc-mark-all-read:focus-visible {
+    outline: 2px solid var(--nc-focus-ring);
+    outline-offset: 2px;
+    border-radius: var(--nc-r-sm);
+}
+
+/* Remove the legacy focus ring only where focus-visible is supported */
+.nc-bell-container:focus:not(:focus-visible),
+.nc-btn:focus:not(:focus-visible),
+.nc-floating-btn:focus:not(:focus-visible),
+.nc-topbar-btn:focus:not(:focus-visible) {
+    outline: none;
+}
+
+/* ============================================================================
+   RAW HTML/CSS CONTENT MODE (v1.8)
+   ----------------------------------------------------------------------------
+   Author-supplied markup owns its own layout, so strip the card's default
+   padding and let the custom HTML fill the surface (mirrors the
+   .nc-has-image-only reset). Additive — never touches the fields-mode cards.
+   ============================================================================ */
+.nc-floating.nc-raw-content {
+    padding: 0;
+}
+
+.nc-floating.nc-pos-center.nc-raw-content {
+    padding: 0;
+}
+
+/* Sidebar drawer item in raw mode */
+.nc-item.nc-raw-content {
+    padding: 0;
+    overflow: hidden;
+}
+
+/* Keep the close button tappable above whatever the author renders */
+.nc-raw-content .nc-floating-close {
+    z-index: 2;
+}
+
+/* The author's markup should not inherit the card's clamp/typography resets */
+.nc-raw-content .nc-raw-body {
+    margin: 0;
+}
+
+/* ---- Motion preferences ------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+
+    .nc-drawer,
+    .nc-overlay,
+    .nc-item,
+    .nc-btn,
+    .nc-btn-toast,
+    .nc-floating-btn,
+    .nc-topbar-btn,
+    .nc-topbar-item,
+    .nc-topbar-dot,
+    .nc-dismiss,
+    .nc-toast-close,
+    .nc-floating-close,
+    .nc-popup-close,
+    .nc-close-drawer,
+    .nc-topbar-close,
+    .nc-bell-container,
+    .nc-bell-container.nc-pulse-animation .nc-bell-icon,
+    .nc-floating,
+    .nc-toast,
+    .nc-popup,
+    .nc-pos-center-overlay,
+    .nc-popup-overlay {
+        animation: none !important;
+        transition: none !important;
+    }
+}

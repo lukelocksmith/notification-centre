@@ -9,6 +9,33 @@ class NC_Metaboxes {
 	public function __construct() {
 		add_action( 'add_meta_boxes', [ $this, 'add_custom_meta_boxes' ] );
 		add_action( 'save_post', [ $this, 'save_custom_meta' ] );
+		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_code_editor' ] );
+	}
+
+	/**
+	 * Enqueue WP's built-in CodeMirror (code editor) on the notification edit
+	 * screen so the raw HTML/CSS textarea gets syntax highlighting. Scoped to the
+	 * nc_notification post edit screens only; degrades to a plain textarea when the
+	 * code editor is unavailable (e.g. user disabled syntax highlighting).
+	 */
+	public function enqueue_code_editor( $hook ) {
+		if ( ! in_array( $hook, [ 'post.php', 'post-new.php' ], true ) ) {
+			return;
+		}
+		$screen = get_current_screen();
+		if ( ! $screen || $screen->post_type !== 'nc_notification' ) {
+			return;
+		}
+		if ( ! function_exists( 'wp_enqueue_code_editor' ) ) {
+			return;
+		}
+		$settings = wp_enqueue_code_editor( [ 'type' => 'text/html' ] );
+		// $settings is false when the user turned off syntax highlighting — expose
+		// that to the metabox JS so it can fall back to the raw textarea.
+		wp_add_inline_script(
+			'code-editor',
+			'window.ncCodeEditorSettings = ' . wp_json_encode( $settings ) . ';'
+		);
 	}
 
 	public function add_custom_meta_boxes() {
@@ -29,6 +56,10 @@ class NC_Metaboxes {
         $nc_description = get_post_meta( $post->ID, 'nc_description', true );
         $nc_title_custom_css_enabled = get_post_meta( $post->ID, 'nc_title_custom_css_enabled', true );
         $nc_title_custom_css = get_post_meta( $post->ID, 'nc_title_custom_css', true );
+
+        // Content mode (v1.8) — 'fields' (structured) or 'raw' (custom HTML/CSS)
+        $nc_content_mode = get_post_meta( $post->ID, 'nc_content_mode', true ) ?: 'fields';
+        $nc_raw_html = get_post_meta( $post->ID, 'nc_raw_html', true );
         $cta_label = get_post_meta( $post->ID, 'nc_cta_label', true );
         $cta_url = get_post_meta( $post->ID, 'nc_cta_url', true );
         $cta_target = get_post_meta( $post->ID, 'nc_cta_target', true ) ?: '_self';
@@ -241,8 +272,31 @@ class NC_Metaboxes {
         </div>
 
 
-        <!-- SECTION 2: TITLE & DESCRIPTION -->
+        <!-- SECTION: CONTENT MODE (v1.8) -->
         <div class="nc-row">
+            <h3>Tryb treści</h3>
+            <p class="description" style="margin-bottom:10px;">Wybierz jak budujesz treść powiadomienia: gotowe pola albo własny kod HTML/CSS.</p>
+            <p style="display:flex; gap:24px; flex-wrap:wrap;">
+                <label style="display:flex; align-items:center; gap:6px; font-weight:600; cursor:pointer;">
+                    <input type="radio" name="nc_content_mode" value="fields" class="nc-content-mode-radio" <?php checked($nc_content_mode, 'fields'); ?>>
+                    Pola strukturalne
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:600; cursor:pointer;">
+                    <input type="radio" name="nc_content_mode" value="raw" class="nc-content-mode-radio" <?php checked($nc_content_mode, 'raw'); ?>>
+                    Własny HTML/CSS
+                </label>
+            </p>
+            <div id="nc-raw-wrap" class="nc-raw-only" style="<?php echo $nc_content_mode === 'raw' ? '' : 'display:none;'; ?> margin-top:10px;">
+                <textarea name="nc_raw_html" id="nc_raw_html" rows="14" style="width:100%; font-family:monospace; font-size:13px;" placeholder="&lt;div class=&quot;moja-karta&quot;&gt;...&lt;/div&gt;&#10;&lt;style&gt;.moja-karta{ padding:20px; }&lt;/style&gt;"><?php echo esc_textarea($nc_raw_html); ?></textarea>
+                <p class="description" style="margin-top:6px;">
+                    Wklej kompletny HTML. CSS umieść w tagu <code>&lt;style&gt;</code>. Shortcode'y WordPress działają (np. formularze).
+                    Wykonanie <code>&lt;script&gt;</code> wymaga uprawnienia <code>unfiltered_html</code> (administrator) — bez niego skrypty są usuwane przy zapisie.
+                </p>
+            </div>
+        </div>
+
+        <!-- SECTION 2: TITLE & DESCRIPTION -->
+        <div class="nc-row nc-fields-only">
             <h3>2. Tytuł i Opis</h3>
             <p style="display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
                 <span>
@@ -279,7 +333,7 @@ class NC_Metaboxes {
         </div>
 
         <!-- SECTION 3: CTA -->
-        <div class="nc-row">
+        <div class="nc-row nc-fields-only">
             <h3>3. Przycisk (CTA)</h3>
             <p>
                 <label class="nc-label">Etykieta przycisku</label>
@@ -572,7 +626,7 @@ class NC_Metaboxes {
         </div>
         
         <!-- SECTION 6: APPEARANCE -->
-        <div class="nc-row">
+        <div class="nc-row nc-fields-only">
             <h3>6. Wygląd</h3>
             <p class="description">Pozostaw puste, aby użyć kolorów globalnych.</p>
             <?php 
@@ -635,7 +689,43 @@ class NC_Metaboxes {
 
             <hr>
         </div>
-        
+
+        <!-- CONTENT MODE TOGGLE + CODE EDITOR (v1.8) -->
+        <script>
+        jQuery(document).ready(function($){
+            var cmInstance = null;
+
+            function initCodeEditor(){
+                if (cmInstance) return;
+                // wp.codeEditor + settings object are only present when syntax
+                // highlighting is enabled and the code editor was enqueued.
+                if (window.ncCodeEditorSettings && typeof wp !== 'undefined' && wp.codeEditor) {
+                    var ed = wp.codeEditor.initialize($('#nc_raw_html'), window.ncCodeEditorSettings);
+                    cmInstance = ed && ed.codemirror ? ed.codemirror : null;
+                }
+            }
+
+            function applyContentMode(mode){
+                if (mode === 'raw') {
+                    $('.nc-fields-only').hide();
+                    $('.nc-raw-only').show();
+                    initCodeEditor();
+                    // CodeMirror mis-measures while its container is hidden; refresh once visible.
+                    if (cmInstance) { setTimeout(function(){ cmInstance.refresh(); }, 20); }
+                } else {
+                    $('.nc-fields-only').show();
+                    $('.nc-raw-only').hide();
+                }
+            }
+
+            $('.nc-content-mode-radio').on('change', function(){
+                applyContentMode($('.nc-content-mode-radio:checked').val());
+            });
+
+            applyContentMode($('.nc-content-mode-radio:checked').val() || 'fields');
+        });
+        </script>
+
 		<?php
 	}
 
@@ -655,6 +745,35 @@ class NC_Metaboxes {
             update_post_meta( $post_id, 'nc_description', sanitize_textarea_field( $_POST['nc_description'] ) );
         } else {
             delete_post_meta( $post_id, 'nc_description' );
+        }
+
+        // ── Content mode + raw HTML/CSS (v1.8) ────────────────────────────
+        // Mode whitelist: only 'raw' opts into custom HTML; anything else = 'fields'.
+        $content_mode = ( isset( $_POST['nc_content_mode'] ) && $_POST['nc_content_mode'] === 'raw' ) ? 'raw' : 'fields';
+        update_post_meta( $post_id, 'nc_content_mode', $content_mode );
+
+        // Raw HTML gate: users with unfiltered_html store markup verbatim (so
+        // <style>/<script> and embedded form markup survive) and get raw_trusted='1';
+        // everyone else is filtered through wp_kses (post set + <style>) and gets
+        // raw_trusted='' so the front never re-executes <script> from an untrusted body.
+        // wp_unslash first so kses sees clean markup; wp_slash back because
+        // update_metadata() unslashes once more before storing.
+        if ( isset( $_POST['nc_raw_html'] ) ) {
+            $raw = wp_unslash( $_POST['nc_raw_html'] );
+            if ( current_user_can( 'unfiltered_html' ) ) {
+                $clean   = $raw;
+                $trusted = '1';
+            } else {
+                $allowed          = wp_kses_allowed_html( 'post' );
+                $allowed['style'] = [ 'type' => true, 'media' => true ];
+                $clean            = wp_kses( $raw, $allowed );
+                $trusted          = '';
+            }
+            update_post_meta( $post_id, 'nc_raw_html', wp_slash( $clean ) );
+            update_post_meta( $post_id, 'nc_raw_trusted', $trusted );
+        } else {
+            delete_post_meta( $post_id, 'nc_raw_html' );
+            update_post_meta( $post_id, 'nc_raw_trusted', '' );
         }
 
         // nc_title_custom_css (textarea)
