@@ -73,10 +73,34 @@
         var borderRadius = size > 40 ? 8 : 6;
         var fontSize = size > 40 ? 40 : 32;
         if (icon.indexOf('.') > -1 || icon.indexOf('/') > -1) {
-            return '<img src="' + icon + '" class="nc-icon-img" style="width:' + size + 'px; height:' + size + 'px; border-radius:' + borderRadius + 'px; object-fit:cover; display:block;" alt="">';
+            return '<img src="' + safeUrl(icon) + '" class="nc-icon-img" style="width:' + size + 'px; height:' + size + 'px; border-radius:' + borderRadius + 'px; object-fit:cover; display:block;" alt="">';
         }
-        if (icon.startsWith('dashicons-')) return '<span class="dashicons ' + icon + '" style="font-size:' + fontSize + 'px; width:' + size + 'px; height:' + size + 'px; line-height:' + size + 'px; text-align:center;"></span>';
-        return '<span style="font-size:' + fontSize + 'px; width:' + size + 'px; height:' + size + 'px; line-height:' + size + 'px; text-align:center; display:block;">' + icon + '</span>';
+        if (icon.startsWith('dashicons-')) {
+            // Only allow well-formed dashicon class names; reject anything else (XSS guard)
+            if (!/^dashicons-[a-z0-9-]+$/.test(icon)) return '';
+            return '<span class="dashicons ' + icon + '" style="font-size:' + fontSize + 'px; width:' + size + 'px; height:' + size + 'px; line-height:' + size + 'px; text-align:center;"></span>';
+        }
+        return '<span style="font-size:' + fontSize + 'px; width:' + size + 'px; height:' + size + 'px; line-height:' + size + 'px; text-align:center; display:block;">' + esc(icon) + '</span>';
+    }
+
+    // Re-execute inert <script> tags inside a container. innerHTML PARSES scripts
+    // but never RUNS them, so we swap each for a freshly created element (which DOES
+    // run). Used for raw-HTML notifications whose author had unfiltered_html
+    // (n.raw_scripts === true). NOTE: ncInitGravityForms already does this for GF
+    // forms, so callers skip this when a gform_ form is present to avoid double-exec.
+    function ncExecuteScripts(container) {
+        container.querySelectorAll('script').forEach(function (old) {
+            const s = document.createElement('script');
+            for (let i = 0; i < old.attributes.length; i++) {
+                s.setAttribute(old.attributes[i].name, old.attributes[i].value);
+            }
+            if (old.src) {
+                s.src = old.src;
+            } else {
+                s.textContent = old.textContent;
+            }
+            old.parentNode.replaceChild(s, old);
+        });
     }
 
     // Server-client time offset for accurate countdowns
@@ -107,6 +131,41 @@
                 ids: shownSessionIds
             }));
         } catch { /* ignore */ }
+    }
+
+    // Track which notification IDs already counted a 'view' this session (dedupe).
+    // Prevents inflating the view metric on every page load / re-render.
+    let viewedSessionIds = [];
+    try {
+        const storedViewed = JSON.parse(sessionStorage.getItem('nc_viewed_ids') || '{}');
+        const cacheVerV = ncData.cacheVersion || '0';
+        if (storedViewed.v === cacheVerV && Array.isArray(storedViewed.ids)) {
+            viewedSessionIds = storedViewed.ids;
+        }
+    } catch { /* ignore */ }
+    function saveViewedSession() {
+        try {
+            sessionStorage.setItem('nc_viewed_ids', JSON.stringify({
+                v: ncData.cacheVersion || '0',
+                ids: viewedSessionIds
+            }));
+        } catch { /* ignore */ }
+    }
+    // Fire a 'view' event at most once per session per notification id.
+    function trackViewOnce(id) {
+        if (!id) return;
+        if (viewedSessionIds.includes(id)) return;
+        viewedSessionIds.push(id);
+        saveViewedSession();
+        trackEvent(id, 'view');
+    }
+    // Send 'view' for the currently-visible unread sidebar items (called when the
+    // drawer opens — the drawer is closed on page load, so items aren't "seen" yet).
+    function trackDrawerViews() {
+        if (!listContainer) return;
+        listContainer.querySelectorAll('.nc-item.unread').forEach(el => {
+            if (el.dataset.id) trackViewOnce(el.dataset.id);
+        });
     }
 
     // Queue System: GLOBAL - only ONE floating notification at a time
@@ -230,6 +289,33 @@
             // We don't preventDefault here because Fluent Forms needs to process it
             ncLog(`NC: Config exists for ${instanceId}, letting Fluent Forms handle AJAX submission`);
         }, true); // Capture phase to run before other handlers
+
+        // GRAVITY FORMS SUBMIT GUARD (safety net)
+        // A properly initialized GF (ajax="true") targets its hidden iframe, so submit
+        // never reloads the page. If the target is missing (init failed), a native submit
+        // WOULD reload — intercept, prevent it, and try to (re)initialize instead.
+        document.addEventListener('submit', function(e) {
+            const form = e.target;
+            if (!form.id || form.id.indexOf('gform_') !== 0) return;
+
+            const notificationContainer = form.closest('.nc-floating, .nc-item, .nc-topbar-item, .nc-pos-center-overlay');
+            if (!notificationContainer) return; // Not in a notification — leave it alone
+
+            const target = form.getAttribute('target');
+            if (target && target.indexOf('gform_ajax_frame_') === 0) {
+                // Correctly wired to its AJAX iframe — let the native (no-reload) submit proceed.
+                return;
+            }
+
+            console.error('NC: Gravity Form submit without AJAX iframe target — preventing reload and reinitializing.');
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof window.ncInitGravityForms === 'function') {
+                form.removeAttribute('data-nc-gf-init');
+                window.ncInitGravityForms(notificationContainer);
+            }
+            return false;
+        }, true); // Capture phase
 
         // Listeners
         if (bellContainer) bellContainer.addEventListener('click', toggleDrawer);
@@ -371,6 +457,50 @@
             });
         };
 
+        // Global Helper for Gravity Forms
+        // GF (ajax="true") wires its AJAX submission with an inline <script> emitted next
+        // to the form markup. innerHTML PARSES those <script>s but never EXECUTES them, so
+        // we re-create each one (a freshly createElement'd <script> DOES run) which fires
+        // both the hidden-iframe on('load') handler and the gform_post_render registrar.
+        // This differs from ncInitFluentForms (which rebuilds config from a global model
+        // var) because GF keeps its whole init in those inline scripts, not in window.*.
+        window.ncInitGravityForms = function (container) {
+            if (typeof jQuery === 'undefined') return;
+
+            const form = container.querySelector('form[id^="gform_"]');
+            if (!form) return;
+
+            // Don't initialize the same form twice (reopened popup, re-render, submit-guard retry)
+            if (form.getAttribute('data-nc-gf-init') === '1') return;
+            form.setAttribute('data-nc-gf-init', '1');
+
+            const formId = form.id.replace('gform_', '');
+
+            // Re-execute inert inline scripts that arrived via innerHTML.
+            container.querySelectorAll('script').forEach(function (old) {
+                const s = document.createElement('script');
+                if (old.src) {
+                    s.src = old.src;
+                } else {
+                    s.textContent = old.textContent;
+                }
+                if (old.type) s.type = old.type;
+                old.parentNode.replaceChild(s, old);
+            });
+
+            // Fire gform_post_render for good measure (idempotent — GF guards against dupes).
+            try {
+                if (window.gform && window.gform.core && typeof window.gform.core.triggerPostRenderEvents === 'function') {
+                    window.gform.core.triggerPostRenderEvents(formId, 1);
+                } else if (window.jQuery) {
+                    window.jQuery(document).trigger('gform_post_render', [formId, 1]);
+                }
+                ncLog('NC: Gravity Forms initialized for form ' + formId);
+            } catch (err) {
+                console.error('NC: Error triggering gform_post_render for form ' + formId + ':', err);
+            }
+        };
+
         // Keyboard: Enter/Space on bell opens drawer
         if (bellContainer) {
             bellContainer.addEventListener('keydown', (e) => {
@@ -488,6 +618,8 @@
         renderBadge();
         checkFloating();
         renderTopBar();
+        // (Re)start the countdown ticker if any countdowns were just rendered
+        startCountdownTicker();
     }
 
     function renderList() {
@@ -514,8 +646,34 @@
             el.className = `nc-item ${isRead ? 'read' : 'unread'}${isUserNotif ? ' nc-item-user' : ''}`;
             el.dataset.id = n.id;
 
+            // Raw HTML/CSS mode: render ONLY the author-supplied body (no icon,
+            // image, title or CTA). Keep a minimal meta row so the item stays
+            // dismissible in the drawer (unless permanent).
+            const isRaw = n.content_mode === 'raw';
+            if (isRaw) {
+                el.classList.add('nc-raw-content');
+                el.innerHTML = `
+                    <div class="nc-item-inner">
+                        <div class="nc-item-content" style="flex-grow:1;">
+                            <div class="nc-item-header">
+                                <div style="display:flex; align-items:center;">
+                                    ${!isRead ? '<span class="nc-new-badge">Nowe</span>' : ''}
+                                    <span class="nc-date" title="${n.date}">${timeAgo(n.date)}</span>
+                                </div>
+                                ${!n.settings.sidebar_permanent ? '<button class="nc-dismiss" title="Usuń">&times;</button>' : ''}
+                            </div>
+                            <div class="nc-item-body nc-raw-body">${n.body}</div>
+                        </div>
+                    </div>
+                `;
+            } else {
+
             // Text truncation logic
-            let bodyHtml = `<div class="nc-content line-clamp">${esc(n.body)}</div>`;
+            // See note in showFloating(): nc_description is HTML-stripped server-side
+            // (sanitize_textarea_field), so raw markup here is trusted shortcode output
+            // (embedded forms). Render admin bodies raw; keep Woo per-user bodies escaped.
+            const listBody = (n.type === 'user') ? esc(n.body) : n.body;
+            let bodyHtml = `<div class="nc-content line-clamp">${listBody}</div>`;
             let toggleBtn = '';
 
             // Simple expansion check (naive char count or CSS generic)
@@ -589,6 +747,7 @@
                     </div>
                 </div>
             `;
+            } // end else (fields mode)
 
             // Listeners
             const dismissBtn = el.querySelector('.nc-dismiss');
@@ -626,12 +785,23 @@
 
             listContainer.appendChild(el);
 
-            // Track view for unread items
-            if (!isRead) trackEvent(n.id, 'view');
+            // NOTE: sidebar 'view' events are NOT sent here — the drawer is closed on
+            // page load, so items aren't actually seen. They're tracked (deduped per
+            // session) in trackDrawerViews() when the drawer is opened.
 
             // Init Fluent Forms in this item if present
             if (typeof window.ncInitFluentForms === 'function') {
                 window.ncInitFluentForms(el);
+            }
+            // Init Gravity Forms in this item if present
+            if (typeof window.ncInitGravityForms === 'function') {
+                window.ncInitGravityForms(el);
+            }
+            // Raw mode: run inline <script> only if the author was trusted
+            // (raw_scripts). Skip when a GF form is present — ncInitGravityForms
+            // already re-executed every script in the container.
+            if (isRaw && n.raw_scripts && !el.querySelector('form[id^="gform_"]')) {
+                ncExecuteScripts(el);
             }
         });
     }
@@ -769,20 +939,26 @@
             }
         });
 
-        // Scroll Depth tracking
+        // Scroll Depth tracking (passive + rAF throttle to avoid layout thrash on scroll)
+        let scrollRafPending = false;
         window.addEventListener('scroll', () => {
-            const scrollTop = window.scrollY;
-            const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-            const scrollPercent = docHeight > 0 ? Math.round((scrollTop / docHeight) * 100) : 0;
-
-            if (scrollPercent > scrollDepthReached) {
-                scrollDepthReached = scrollPercent;
-                checkTrigger('scroll_depth', scrollPercent);
-            }
-
-            // Also update activity time
+            // Update activity time immediately (cheap, no layout read)
             lastActivityTime = Date.now();
-        });
+
+            if (scrollRafPending) return;
+            scrollRafPending = true;
+            requestAnimationFrame(() => {
+                scrollRafPending = false;
+                const scrollTop = window.scrollY;
+                const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+                const scrollPercent = docHeight > 0 ? Math.round((scrollTop / docHeight) * 100) : 0;
+
+                if (scrollPercent > scrollDepthReached) {
+                    scrollDepthReached = scrollPercent;
+                    checkTrigger('scroll_depth', scrollPercent);
+                }
+            });
+        }, { passive: true });
 
         // Mouse movement for activity tracking
         document.addEventListener('mousemove', () => {
@@ -920,6 +1096,9 @@
     function showFloating(n) {
         ncLog('NC: showFloating() called for ID', n.id, n.title);
 
+        // Raw HTML/CSS mode: the author's markup fills the whole card.
+        const isRaw = n.content_mode === 'raw';
+
         // Final guard: check if dismissed (race condition protection)
         if (isDismissed(n.id, dismissedToastIds, n.settings.repeat_val, n.settings.repeat_unit)) {
             ncLog(`NC: ID ${n.id} was dismissed, skipping and showing next`);
@@ -1035,6 +1214,14 @@
             el.classList.add('nc-has-image-only');
         }
 
+        // n.body is the shortcode-rendered notification description. Its raw source
+        // (nc_description) is sanitized server-side with sanitize_textarea_field() on
+        // save, which strips ALL HTML tags — so the only markup here is trusted
+        // shortcode output (e.g. an embedded Gravity/Fluent form). Escaping it rendered
+        // those embedded forms as literal text; render admin-authored bodies raw and keep
+        // dynamic Woo per-user bodies (n.type === 'user') escaped.
+        const floatingBody = (n.type === 'user') ? esc(n.body) : n.body;
+
         // Budujemy HTML
         const floatingHTML = `
             ${floatingImageHtml}
@@ -1043,7 +1230,7 @@
                 ${iconHtml}
                 <div style="flex-grow:1;">
                     ${effectiveTitle ? `<div class="nc-floating-title">${esc(effectiveTitle)}</div>` : ''}
-                    <div class="nc-floating-body">${esc(n.body)}</div>
+                    <div class="nc-floating-body">${floatingBody}</div>
                     ${n.settings.countdown && n.settings.countdown.enabled ? renderCountdownHTML(n.settings.countdown, true) : ''}
                     ${n.cta_label ? `<a href="${safeUrl(n.cta_url)}" class="nc-floating-btn" style="${btnStyle}"${ctaTargetAttrs(n)}>${esc(n.cta_label)}</a>` : ''}
                 </div>
@@ -1052,17 +1239,36 @@
         `;
 
         // Wstawiamy HTML (inline scripts nie będą wykonane przez innerHTML)
-        el.innerHTML = floatingHTML;
+        if (isRaw) {
+            // Body only — no icon/image/title/CTA. Close button kept so the
+            // floating card stays dismissible. .nc-raw-content strips card padding.
+            el.classList.add('nc-raw-content');
+            el.innerHTML = `<div class="nc-floating-body nc-raw-body">${n.body}</div><button class="nc-floating-close">&times;</button>`;
+        } else {
+            el.innerHTML = floatingHTML;
+        }
 
         // Append do DOM
         container.appendChild(el);
 
-        // Track view event
-        trackEvent(n.id, 'view');
+        // Track view event (floating is really visible; dedupe once per session)
+        trackViewOnce(n.id);
+
+        // A floating notification may carry a countdown — ensure the ticker runs
+        startCountdownTicker();
 
         // KRYTYCZNE: Inicjalizacja Fluent Forms ПОСЛЕ dodania do DOM
         if (typeof window.ncInitFluentForms === 'function') {
             window.ncInitFluentForms(el);
+        }
+        // KRYTYCZNE: Inicjalizacja Gravity Forms po dodaniu do DOM (ścieżka popupu center-overlay)
+        if (typeof window.ncInitGravityForms === 'function') {
+            window.ncInitGravityForms(el);
+        }
+        // Raw mode: run inline <script> only if trusted (raw_scripts). Skip when a
+        // GF form is present — ncInitGravityForms already re-executed the scripts.
+        if (isRaw && n.raw_scripts && !el.querySelector('form[id^="gform_"]')) {
+            ncExecuteScripts(el);
         }
 
         // Close event
@@ -1200,6 +1406,7 @@
                 overlay.classList.add('open');
                 document.body.classList.add('nc-scroll-lock');
                 focusFirstInDrawer();
+                trackDrawerViews();
 
                 // Close floating notifications when drawer opens
                 document.querySelectorAll('.nc-floating').forEach(el => {
@@ -1220,6 +1427,7 @@
             if (isNowOpen) {
                 document.body.classList.add('nc-scroll-lock');
                 focusFirstInDrawer();
+                trackDrawerViews();
             } else {
                 document.body.classList.remove('nc-scroll-lock');
                 if (bellContainer) bellContainer.focus();
@@ -1363,8 +1571,8 @@
         applyTopBarContainerColors(0);
         topBarContainer.style.display = 'flex';
         document.body.classList.add('nc-topbar-active');
-        // Track view for topbar items
-        topBarItems.forEach(function(n) { trackEvent(n.id, 'view'); });
+        // Track view for topbar items (really visible; dedupe once per session)
+        topBarItems.forEach(function(n) { trackViewOnce(n.id); });
         topBarCurrentIndex = 0;
 
         // Toggle sticky class based on setting
@@ -1579,44 +1787,65 @@
         return html;
     }
 
-    // Global countdown ticker
-    function startCountdownTicker() {
-        setInterval(() => {
-            document.querySelectorAll('.nc-countdown').forEach(el => {
-                let target = parseInt(el.dataset.target);
+    // Global countdown ticker — runs setInterval ONLY while at least one
+    // .nc-countdown is present in the DOM, and stops itself when none remain.
+    let countdownInterval = null;
 
-                // For daily type, check if we need to reset or autohide
-                if (el.dataset.type === 'daily' && target < Date.now()) {
-                    if (el.dataset.autohide === '1') {
-                        // Autohide: remove the notification from DOM
-                        const notifEl = el.closest('.nc-notification, .nc-topbar, .nc-floating');
-                        if (notifEl) notifEl.remove();
-                        return;
-                    }
-                    const [hours, minutes] = (el.dataset.time || '10:00').split(':').map(Number);
-                    target = getDailyTargetInTimezone(hours, minutes);
-                    el.dataset.target = target;
+    function tickCountdowns() {
+        const els = document.querySelectorAll('.nc-countdown');
+        if (els.length === 0) {
+            // Nothing left to tick — release the interval to save CPU/battery
+            stopCountdownTicker();
+            return;
+        }
+        els.forEach(el => {
+            let target = parseInt(el.dataset.target);
+
+            // For daily type, check if we need to reset or autohide
+            if (el.dataset.type === 'daily' && target < Date.now()) {
+                if (el.dataset.autohide === '1') {
+                    // Autohide: remove the notification from DOM
+                    const notifEl = el.closest('.nc-notification, .nc-topbar, .nc-floating');
+                    if (notifEl) notifEl.remove();
+                    return;
                 }
+                const [hours, minutes] = (el.dataset.time || '10:00').split(':').map(Number);
+                target = getDailyTargetInTimezone(hours, minutes);
+                el.dataset.target = target;
+            }
 
-                const time = calculateTimeLeft(target);
-                const pad = n => String(n).padStart(2, '0');
+            const time = calculateTimeLeft(target);
+            const pad = n => String(n).padStart(2, '0');
 
-                const daysEl = el.querySelector('.nc-cd-days');
-                const hoursEl = el.querySelector('.nc-cd-hours');
-                const minutesEl = el.querySelector('.nc-cd-minutes');
-                const secondsEl = el.querySelector('.nc-cd-seconds');
+            const daysEl = el.querySelector('.nc-cd-days');
+            const hoursEl = el.querySelector('.nc-cd-hours');
+            const minutesEl = el.querySelector('.nc-cd-minutes');
+            const secondsEl = el.querySelector('.nc-cd-seconds');
 
-                if (daysEl) daysEl.textContent = time.days;
-                if (hoursEl) hoursEl.textContent = pad(time.hours);
-                if (minutesEl) minutesEl.textContent = pad(time.minutes);
-                if (secondsEl) secondsEl.textContent = pad(time.seconds);
+            if (daysEl) daysEl.textContent = time.days;
+            if (hoursEl) hoursEl.textContent = pad(time.hours);
+            if (minutesEl) minutesEl.textContent = pad(time.minutes);
+            if (secondsEl) secondsEl.textContent = pad(time.seconds);
 
-                el.classList.toggle('expired', time.expired);
-            });
-        }, 1000);
+            el.classList.toggle('expired', time.expired);
+        });
     }
 
-    // Start the countdown ticker
+    function startCountdownTicker() {
+        if (countdownInterval) return; // already running
+        if (!document.querySelector('.nc-countdown')) return; // nothing to tick yet
+        countdownInterval = setInterval(tickCountdowns, 1000);
+    }
+
+    function stopCountdownTicker() {
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+        }
+    }
+
+    // Ticker is (re)started by renderAll() and showFloating() once countdowns
+    // are actually in the DOM; this initial call is a guarded no-op if none exist.
     startCountdownTicker();
 
     // Helper: Relative Time

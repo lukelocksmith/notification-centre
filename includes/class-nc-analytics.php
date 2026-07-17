@@ -13,11 +13,8 @@ class NC_Analytics {
 		add_action( 'rest_api_init', [ $this, 'register_routes' ] );
 		add_action( 'admin_menu', [ $this, 'add_analytics_page' ] );
 		add_action( 'nc_cleanup_old_events', [ $this, 'cleanup_old_events' ] );
-
-		// Schedule cleanup cron if not already scheduled
-		if ( ! wp_next_scheduled( 'nc_cleanup_old_events' ) ) {
-			wp_schedule_event( time(), 'daily', 'nc_cleanup_old_events' );
-		}
+		// Cron scheduling moved to Notification_Centre::schedule_events()
+		// (activation + admin_init) so it no longer runs on every request.
 	}
 
 	/**
@@ -84,13 +81,25 @@ class NC_Analytics {
 		// Rate limit: max 100 events per minute per IP
 		$ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 		$rate_key = 'nc_rate_' . md5( $ip );
-		$count = (int) get_transient( $rate_key );
+		$raw   = get_transient( $rate_key );
+		$count = (int) $raw;
 
 		if ( $count >= 100 ) {
 			return new WP_Error( 'rate_limited', 'Too many requests', [ 'status' => 429 ] );
 		}
 
-		set_transient( $rate_key, $count + 1, MINUTE_IN_SECONDS );
+		// Set the TTL only when the counter is first created so the 60s window is a
+		// fixed sliding window, not reset on every event (which would let a steady
+		// stream of requests keep the transient — and its expiry — alive forever).
+		if ( false === $raw ) {
+			set_transient( $rate_key, 1, MINUTE_IN_SECONDS );
+		} elseif ( wp_using_ext_object_cache() ) {
+			// Object cache has no separate timeout row to preserve — re-set is the only option.
+			set_transient( $rate_key, $count + 1, MINUTE_IN_SECONDS );
+		} else {
+			// DB transient: bump the value directly, leaving _transient_timeout_* untouched.
+			update_option( '_transient_' . $rate_key, $count + 1, false );
+		}
 
 		$notification_id = $request->get_param( 'notification_id' );
 		$event_type      = $request->get_param( 'event_type' );

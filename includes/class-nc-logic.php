@@ -22,7 +22,9 @@ class NC_Logic {
 			'post_status' => 'publish',
 			'posts_per_page' => 50, // Limit for performance
 			'orderby' => 'date',
-			'order' => 'DESC'
+			'order' => 'DESC',
+			'no_found_rows' => true,          // PERF: skip SQL_CALC_FOUND_ROWS (no pagination needed)
+			'update_post_term_cache' => false, // PERF: taxonomy terms not used in this loop
 		];
 
 		$query = new WP_Query( $args );
@@ -36,7 +38,10 @@ class NC_Logic {
 		foreach ( $query->posts as $post ) {
 			$meta = get_post_meta( $post->ID );
 			if ( self::is_valid( $post, $context, $meta ) ) {
-				$valid[] = self::prepare_for_api( $post, $meta );
+				$item = self::prepare_for_api( $post, $meta );
+				// PERF: compute the sort timestamp once here, not on every usort comparison.
+				$item['_ts'] = strtotime( $item['date'] );
+				$valid[] = $item;
 			}
 		}
 
@@ -44,14 +49,20 @@ class NC_Logic {
         usort($valid, function($a, $b) {
             $pinnedA = $a['settings']['pinned'] ? 1 : 0;
             $pinnedB = $b['settings']['pinned'] ? 1 : 0;
-            
+
             if ($pinnedA !== $pinnedB) {
                 return $pinnedB - $pinnedA; // 1 (pinned) comes before 0
             }
-            
-            // Fallback to date (newest first)
-            return strtotime($b['date']) - strtotime($a['date']);
+
+            // Fallback to date (newest first) — uses precomputed timestamp
+            return $b['_ts'] - $a['_ts'];
         });
+
+		// Drop the internal sort key so it never leaks into the API payload.
+		foreach ( $valid as &$item ) {
+			unset( $item['_ts'] );
+		}
+		unset( $item );
 
 		wp_reset_postdata();
 		return $valid;
@@ -201,6 +212,21 @@ class NC_Logic {
         return true;
     }
 
+	/**
+	 * Rewrite a Gravity Forms <form> action to the site front-end URL.
+	 *
+	 * Used only while rendering notification bodies inside the REST context, where GF
+	 * would otherwise capture the REST endpoint URL as the action (GET-only → 404 on submit).
+	 */
+	public static function retarget_gform_action( $form_tag ) {
+		return preg_replace(
+			'/(\saction=)([\'"]).*?\2/',
+			'$1$2' . esc_url( home_url( '/' ) ) . '$2',
+			$form_tag,
+			1
+		);
+	}
+
 	private static function prepare_for_api( $post, $meta = null ) {
        if ( $meta === null ) {
            $meta = get_post_meta( $post->ID );
@@ -216,21 +242,74 @@ class NC_Logic {
            error_log('[NC Debug] nc_show_in_sidebar: ' . $get('nc_show_in_sidebar'));
        }
        
+	// Gravity Forms defers each form's init <script> (the hidden-iframe AJAX handler
+	// plus the gform_post_render registrar) to wp_footer, which never fires in the
+	// REST context that renders this body. Force it inline so those scripts travel
+	// inside the returned HTML; main.js re-executes them after the innerHTML insertion
+	// (window.ncInitGravityForms). Scoped to this request only.
+	// Content mode (v1.8): 'raw' renders author-supplied HTML/CSS instead of the
+	// structured fields. Sanitization already happened on save (capability-gated),
+	// so the body here is NOT re-run through wp_kses — doing so would strip a
+	// trusted admin's <style>/<script>.
+	$content_mode  = $get('nc_content_mode') ?: 'fields';
+	$nc_raw_html   = $get('nc_raw_html');
+	$is_raw        = ( $content_mode === 'raw' && trim( (string) $nc_raw_html ) !== '' );
+
+	$nc_description = $get('nc_description');
+	// GF defers its init <script> to wp_footer; detect the shortcode in whichever
+	// source will actually be rendered (raw HTML or the structured description).
+	$gf_source = $is_raw ? $nc_raw_html : $nc_description;
+	if ( class_exists( 'GFForms' ) && stripos( $gf_source, '[gravityform' ) !== false ) {
+		add_filter( 'gform_init_scripts_footer', '__return_false' );
+
+		// GF bakes the CURRENT request URI into the form's action. This body is rendered
+		// inside the REST request (/wp-json/nc/v1/notifications, GET-only), so the action
+		// would point there and the submit would 404. Rewrite it to a normal front-end URL:
+		// the iframe/submit then lands on a request where GF's maybe_process_form() runs and
+		// returns the next page / confirmation. GF self-corrects the action on later pages
+		// (those round-trips already happen on the front-end URL).
+		if ( ! has_filter( 'gform_form_tag', 'NC_Logic::retarget_gform_action' ) ) {
+			add_filter( 'gform_form_tag', 'NC_Logic::retarget_gform_action', 10, 1 );
+		}
+	}
+
+	// Body: raw mode renders the author's HTML verbatim (sanitized at save time
+	// depending on unfiltered_html); fields mode keeps the kses→shortcode order.
+	if ( $is_raw ) {
+		$body = do_shortcode( $nc_raw_html );
+	} else {
+		// SEC: sanitize the human-authored description with wp_kses_post BEFORE running
+		// shortcodes. kses strips injected <script>/onerror/etc., while shortcode tags
+		// (e.g. [gravityform ...], [fluentform ...]) are plain text that survives kses,
+		// and do_shortcode() then appends the trusted form HTML+scripts AFTER kses.
+		// Order (kses → shortcode) is critical: swapping it would strip the form output.
+		$body = do_shortcode( wp_kses_post( $nc_description ) );
+	}
+
 	return [
 		'id' => $post->ID,
 		'audience' => $get('nc_audience') ?: 'all',
-		'title' => do_shortcode( $get('nc_title') ?: $post->post_title ),
+		// Raw mode owns the whole card — suppress the structured title so the front
+		// never prepends it above the custom HTML.
+		'title' => $is_raw ? '' : do_shortcode( $get('nc_title') ?: $post->post_title ),
 		'title_css' => $get('nc_title_custom_css_enabled') === '1' ? $get('nc_title_custom_css') : '',
-		'body' => do_shortcode( $get('nc_description') ),
-           'cta_label' => $get('nc_cta_label'),
-           'cta_url' => $get('nc_cta_url'),
+		'body' => $body,
+		// content_mode / raw_scripts drive the front-end renderer (main.js):
+		// raw → render body only, and re-execute <script> ONLY when raw_scripts=true
+		// (author had unfiltered_html; otherwise kses already removed scripts on save).
+		'content_mode' => $is_raw ? 'raw' : 'fields',
+		'raw_scripts'  => ( $get('nc_raw_trusted') === '1' ),
+           // Raw mode: force structural elements empty so the front doesn't append a
+           // CTA button or image around the custom HTML.
+           'cta_label' => $is_raw ? '' : $get('nc_cta_label'),
+           'cta_url' => $is_raw ? '' : $get('nc_cta_url'),
            'cta_target' => $get('nc_cta_target') ?: '_self',
-           'icon' => $get('nc_icon'),
-           'image_url' => ( $img_id = (int) $get('nc_image_id') ) ? ( wp_get_attachment_image_url( $img_id, 'large' ) ?: '' ) : '',
+           'icon' => $is_raw ? '' : $get('nc_icon'),
+           'image_url' => $is_raw ? '' : ( ( $img_id = (int) $get('nc_image_id') ) ? ( wp_get_attachment_image_url( $img_id, 'large' ) ?: '' ) : '' ),
            'type' => 'info',
            'date' => get_the_date( 'Y-m-d H:i', $post ),
            'settings' => [
-               'hide_title' => $get('nc_hide_title') === '1',
+               'hide_title' => $is_raw ? true : ( $get('nc_hide_title') === '1' ),
                'dismissible' => ($get('nc_pinned') === '1') ? false : ($get('nc_dismissible') === '1'),
                'pinned' => $get('nc_pinned') === '1',
                

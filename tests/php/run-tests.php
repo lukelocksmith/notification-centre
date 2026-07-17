@@ -361,6 +361,68 @@ nc_cleanup( $created_ids );
 
 
 // ============================================================
+echo "\n\033[1m12. Security: body sanitization (kses)\033[0m\n";
+
+$id = nc_make( $created_ids, [ 'nc_description' => '<script>alert(1)</script><img src=x onerror=alert(2)><b>ok</b> tekst' ] );
+$n  = nc_find( nc_query( $created_ids ), $id );
+nc_assert( $results, 'body strips <script>',            $n && strpos( $n['body'], '<script' ) === false );
+nc_assert( $results, 'body strips onerror handler',     $n && stripos( $n['body'], 'onerror' ) === false );
+nc_assert( $results, 'body keeps safe <b> markup',      $n && strpos( $n['body'], '<b>ok</b>' ) !== false );
+nc_cleanup( $created_ids );
+
+// Shortcode syntax must survive kses (so [gravityform]/[fluentform] still expand)
+$id = nc_make( $created_ids, [ 'nc_description' => 'przed [nc_unregistered_sc_xyz] po' ] );
+$n  = nc_find( nc_query( $created_ids ), $id );
+nc_assert( $results, 'shortcode syntax survives kses',  $n && strpos( $n['body'], '[nc_unregistered_sc_xyz]' ) !== false );
+nc_cleanup( $created_ids );
+
+
+// ============================================================
+echo "\n\033[1m13. Content mode: raw HTML\033[0m\n";
+
+wp_set_current_user( 1 ); // admin has unfiltered_html on single-site
+$id = nc_make( $created_ids, [
+    'nc_content_mode' => 'raw',
+    'nc_raw_html'     => '<style>.ncx{color:red}</style><div class="ncx">RAW-BODY</div>',
+    'nc_raw_trusted'  => '1',
+] );
+$n  = nc_find( nc_query( $created_ids ), $id );
+nc_assert( $results, 'raw: content_mode = raw',             $n && ( $n['content_mode'] ?? '' ) === 'raw' );
+nc_assert( $results, 'raw: body renders raw HTML + <style>', $n && strpos( $n['body'], 'RAW-BODY' ) !== false && strpos( $n['body'], '<style>' ) !== false );
+nc_assert( $results, 'raw: title forced empty',             $n && $n['title'] === '' );
+nc_assert( $results, 'raw: raw_scripts true when trusted',  $n && ! empty( $n['raw_scripts'] ) );
+nc_cleanup( $created_ids );
+wp_set_current_user( 0 );
+
+
+// ============================================================
+echo "\n\033[1m14. Form-ID indexing on save (W1 fix)\033[0m\n";
+
+// Snapshot the real cached form-id lists so this test never leaves orphaned IDs
+// behind (a stale/non-existent form id in the option makes the frontend enqueue
+// dead GF forms and emit "array offset on null" warnings).
+$gf_before = get_option( 'nc_gravityform_ids' );
+$ff_before = get_option( 'nc_fluentform_ids' );
+delete_option( 'nc_gravityform_ids' ); delete_option( 'nc_fluentform_ids' );
+delete_transient( 'nc_gravityform_ids' ); delete_transient( 'nc_fluentform_ids' );
+
+$id = nc_make( $created_ids, [ 'nc_description' => '[gravityform id="777" ajax="true"]' ] );
+Notification_Centre::get_instance()->refresh_form_id_cache( $id );
+$gf = (array) get_option( 'nc_gravityform_ids', [] );
+nc_assert( $results, 'GF id in nc_description indexed on save', in_array( 777, array_map( 'intval', $gf ), true ), 'ids=' . implode( ',', $gf ) );
+
+$id2 = nc_make( $created_ids, [ 'nc_content_mode' => 'raw', 'nc_raw_html' => '[fluentform id="888"]' ] );
+Notification_Centre::get_instance()->refresh_form_id_cache( $id2 );
+$ff = (array) get_option( 'nc_fluentform_ids', [] );
+nc_assert( $results, 'FF id inside nc_raw_html indexed on save', in_array( '888', array_map( 'strval', $ff ), true ), 'ids=' . implode( ',', $ff ) );
+nc_cleanup( $created_ids );
+
+// Restore the real form-id caches (never leave test IDs like 777/888 behind).
+if ( $gf_before === false ) { delete_option( 'nc_gravityform_ids' ); } else { update_option( 'nc_gravityform_ids', $gf_before, false ); }
+if ( $ff_before === false ) { delete_option( 'nc_fluentform_ids' ); } else { update_option( 'nc_fluentform_ids', $ff_before, false ); }
+
+
+// ============================================================
 $total = $results['passed'] + $results['failed'];
 echo "\n\033[1m────────────────────────────────────────────\033[0m\n";
 printf( "\033[1mResults: %d/%d passed\033[0m", $results['passed'], $total );

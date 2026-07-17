@@ -36,3 +36,303 @@
 .column-nc_audience { width: 100px; }
 .column-nc_views    { width: 90px; }
 .column-nc_ctr      { width: 70px; }
+
+/* ============================================================================
+   MODERN RESTYLE LAYER — admin list table pills (shadcn / Radix inspired)
+   Additive layer appended last so it wins on source order. Refines the badge
+   and status pills: softer radius, tuned padding/weight, an accent dot and a
+   hairline ring for crisper separation on the WP admin background.
+   ============================================================================ */
+
+.nc-col-badge,
+.nc-col-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 7px;
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: 0.01em;
+    box-shadow: inset 0 0 0 1px rgba(16, 24, 40, 0.06);
+}
+
+/* Small leading dot on status pills for quick at-a-glance scanning */
+.nc-col-status::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+}
+
+.nc-badge-sidebar  { background: #eaf1fe; color: #1a56db; }
+.nc-badge-floating { background: #fef4d6; color: #92400e; }
+.nc-badge-topbar   { background: #d9f6e6; color: #05704a; }
+
+.nc-status-active    { background: #d9f6e6; color: #05704a; }
+.nc-status-scheduled { background: #fef4d6; color: #92400e; }
+.nc-status-expired   { background: #fde5e5; color: #991b1b; }
+
+/* Spacing when multiple type pills stack in a single cell */
+.column-nc_type .nc-col-badge {
+    margin: 1px 3px 1px 0;
+}
+/* Grey pill for non-published notifications (draft/trash/etc.) — see nc_status column */
+.nc-status-inactive { background: #eef0f3; color: #4b5563; }
+
+/* ============================================================================
+   ADMIN LIST SCREEN — modern (shadcn-inspired) restyle
+   Scoped to the notification list screen only (body.post-type-nc_notification.edit-php)
+   so nothing else in wp-admin is affected. Purely cosmetic overrides.
+   ============================================================================ */
+body.post-type-nc_notification.edit-php {
+    --nc-a-border: #e5e7eb;
+    --nc-a-muted: #6b7280;
+    --nc-a-primary: #e11d35;
+}
+/* Primary "Add New" action as a solid brand button */
+body.post-type-nc_notification.edit-php .page-title-action {
+    background: var(--nc-a-primary);
+    border-color: var(--nc-a-primary);
+    color: #fff;
+    border-radius: 9px;
+    padding: 7px 15px;
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(16,24,40,.08);
+    transition: filter .15s ease;
+}
+body.post-type-nc_notification.edit-php .page-title-action:hover,
+body.post-type-nc_notification.edit-php .page-title-action:focus {
+    background: var(--nc-a-primary);
+    border-color: var(--nc-a-primary);
+    color: #fff;
+    filter: brightness(1.07);
+    box-shadow: 0 1px 2px rgba(16,24,40,.08);
+}
+body.post-type-nc_notification.edit-php .wp-heading-inline {
+    font-weight: 680;
+    letter-spacing: -.02em;
+}
+
+/* Table as a rounded, bordered card */
+body.post-type-nc_notification.edit-php .wp-list-table {
+    border: 1px solid var(--nc-a-border);
+    border-radius: 12px;
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(16,24,40,.05);
+}
+body.post-type-nc_notification.edit-php .wp-list-table thead th,
+body.post-type-nc_notification.edit-php .wp-list-table thead td {
+    background: #f8f9fb;
+    border-bottom: 1px solid var(--nc-a-border);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: .05em;
+    color: var(--nc-a-muted);
+    font-weight: 600;
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+body.post-type-nc_notification.edit-php .wp-list-table tbody td,
+body.post-type-nc_notification.edit-php .wp-list-table tbody th {
+    padding-top: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #f1f2f4;
+    vertical-align: middle;
+}
+body.post-type-nc_notification.edit-php .wp-list-table tbody tr:last-child td,
+body.post-type-nc_notification.edit-php .wp-list-table tbody tr:last-child th {
+    border-bottom: 0;
+}
+body.post-type-nc_notification.edit-php .wp-list-table tbody tr:hover {
+    background: #f8f9fb;
+}
+body.post-type-nc_notification.edit-php .wp-list-table .row-title {
+    font-weight: 620;
+    letter-spacing: -.01em;
+}
+/* Numeric columns align right with tabular figures */
+body.post-type-nc_notification.edit-php .column-nc_views,
+body.post-type-nc_notification.edit-php .column-nc_ctr {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+/* Softer search + filter controls */
+body.post-type-nc_notification.edit-php .search-box input[type="search"],
+body.post-type-nc_notification.edit-php .tablenav select {
+    border-radius: 8px;
+    border-color: var(--nc-a-border);
+}
+body.post-type-nc_notification.edit-php .subsubsub {
+    margin-bottom: 10px;
+}
+
+/* ============================================================================
+   ADMIN EDITOR SCREEN — modern (shadcn-inspired) restyle
+   Scoped hard to #nc_settings_box (our metabox) so the WP editor chrome and
+   the Publish box are untouched. Purely cosmetic: no markup/field-name/save
+   changes. High-specificity ID selectors beat the metabox's inline <style>.
+   ============================================================================ */
+body.post-type-nc_notification #nc_settings_box {
+    --nc-e-border: #e5e7eb;
+    --nc-e-muted: #6b7280;
+    --nc-e-primary: #e11d35;
+    --nc-e-bg: #f6f7f9;
+}
+/* Flatten the outer metabox so each section reads as its own card */
+body.post-type-nc_notification #nc_settings_box.postbox {
+    border: 0; background: transparent; box-shadow: none;
+}
+body.post-type-nc_notification #nc_settings_box > .postbox-header {
+    border: 0; background: transparent;
+}
+body.post-type-nc_notification #nc_settings_box > .postbox-header .hndle {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--nc-e-muted); font-weight: 600;
+}
+body.post-type-nc_notification #nc_settings_box .inside { margin: 0; padding: 0; }
+
+/* Each section as a card */
+body.post-type-nc_notification #nc_settings_box .nc-row {
+    background: #fff;
+    border: 1px solid var(--nc-e-border);
+    border-radius: 12px;
+    padding: 20px 22px;
+    margin: 0 0 16px;
+    box-shadow: 0 1px 2px rgba(16,24,40,.05);
+}
+body.post-type-nc_notification #nc_settings_box .nc-row h3 {
+    margin: 0 0 16px;
+    font-size: 15px; font-weight: 660; letter-spacing: -.01em;
+    padding-bottom: 12px; border-bottom: 1px solid #f1f2f4;
+}
+body.post-type-nc_notification #nc_settings_box .nc-row h4 {
+    font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--nc-e-muted);
+    font-weight: 600; margin: 18px 0 10px;
+}
+
+/* Labels stacked, modern */
+body.post-type-nc_notification #nc_settings_box .nc-label {
+    display: block; width: auto; font-weight: 560; font-size: 13px; margin: 0 0 6px;
+}
+
+/* Inputs / selects / textareas — shadcn style */
+body.post-type-nc_notification #nc_settings_box input[type="text"],
+body.post-type-nc_notification #nc_settings_box input[type="url"],
+body.post-type-nc_notification #nc_settings_box input[type="number"],
+body.post-type-nc_notification #nc_settings_box input[type="datetime-local"],
+body.post-type-nc_notification #nc_settings_box input[type="time"],
+body.post-type-nc_notification #nc_settings_box input[type="date"],
+body.post-type-nc_notification #nc_settings_box select,
+body.post-type-nc_notification #nc_settings_box textarea,
+body.post-type-nc_notification #nc_settings_box .nc-input {
+    border: 1px solid #d7dae0; border-radius: 9px; padding: 8px 11px; font-size: 13.5px;
+    background: #fff; color: #111827; box-shadow: none; min-height: 0; line-height: 1.4;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+body.post-type-nc_notification #nc_settings_box input:focus,
+body.post-type-nc_notification #nc_settings_box select:focus,
+body.post-type-nc_notification #nc_settings_box textarea:focus {
+    border-color: var(--nc-e-primary);
+    box-shadow: 0 0 0 3px rgba(225,29,53,.18);
+    outline: none;
+}
+body.post-type-nc_notification #nc_settings_box textarea { min-height: 90px; }
+
+/* Radio/checkbox sub-options as tidy rows */
+body.post-type-nc_notification #nc_settings_box .nc-sub-option {
+    display: flex; align-items: center; gap: 8px; margin: 0 0 8px; color: #374151; font-size: 13.5px;
+}
+body.post-type-nc_notification #nc_settings_box .nc-sub-option:last-child { margin-bottom: 0; }
+
+/* Content-mode radios — pill group feel */
+body.post-type-nc_notification #nc_settings_box .nc-content-mode-radio { margin-right: 6px; }
+
+/* Targeting rule rows — override inline gray box with a clean card */
+body.post-type-nc_notification #nc_settings_box .nc-rule-item {
+    background: var(--nc-e-bg) !important;
+    border: 1px solid var(--nc-e-border) !important;
+    border-radius: 10px !important;
+    padding: 12px !important;
+}
+
+/* Buttons inside the metabox (add rule, etc.) */
+body.post-type-nc_notification #nc_settings_box .button {
+    border-radius: 8px; border-color: #d7dae0; font-weight: 550;
+}
+body.post-type-nc_notification #nc_settings_box .button-primary {
+    background: var(--nc-e-primary); border-color: var(--nc-e-primary); color: #fff;
+}
+body.post-type-nc_notification #nc_settings_box .button-primary:hover {
+    background: var(--nc-e-primary); border-color: var(--nc-e-primary); filter: brightness(1.07);
+}
+
+/* ============================================================================
+   ADMIN SETTINGS SCREEN — modern (shadcn-inspired) restyle
+   Scoped to the NC settings page (body.nc_notification_page_nc-settings).
+   Cosmetic only — no field-name or option changes.
+   ============================================================================ */
+body.nc_notification_page_nc-settings {
+    --nc-s-border: #e5e7eb;
+    --nc-s-muted: #6b7280;
+    --nc-s-primary: #e11d35;
+}
+body.nc_notification_page_nc-settings .wrap > h1 {
+    font-weight: 680; letter-spacing: -.02em; margin-bottom: 6px;
+}
+/* Section headings become card headers */
+body.nc_notification_page_nc-settings .wrap h2 {
+    font-size: 15px; font-weight: 660; letter-spacing: -.01em; margin: 26px 0 4px;
+}
+body.nc_notification_page_nc-settings .wrap > form > .description,
+body.nc_notification_page_nc-settings .wrap > form > p.description {
+    color: var(--nc-s-muted); margin: 0 0 12px;
+}
+/* Each form-table as a card */
+body.nc_notification_page_nc-settings .form-table {
+    background: #fff; border: 1px solid var(--nc-s-border); border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(16,24,40,.05); margin-top: 8px; overflow: hidden;
+    border-collapse: separate; border-spacing: 0;
+}
+body.nc_notification_page_nc-settings .form-table th,
+body.nc_notification_page_nc-settings .form-table td {
+    padding: 16px 18px; border-bottom: 1px solid #f1f2f4; vertical-align: top;
+}
+body.nc_notification_page_nc-settings .form-table tr:last-child th,
+body.nc_notification_page_nc-settings .form-table tr:last-child td {
+    border-bottom: 0;
+}
+body.nc_notification_page_nc-settings .form-table th {
+    font-weight: 560; font-size: 13.5px; color: #111827; width: 240px;
+}
+body.nc_notification_page_nc-settings .form-table .description {
+    color: var(--nc-s-muted); font-size: 12.5px;
+}
+/* Inputs / selects — shadcn */
+body.nc_notification_page_nc-settings input[type="text"],
+body.nc_notification_page_nc-settings input[type="number"],
+body.nc_notification_page_nc-settings input[type="url"],
+body.nc_notification_page_nc-settings select {
+    border: 1px solid #d7dae0; border-radius: 9px; padding: 8px 11px; font-size: 13.5px;
+    background: #fff; box-shadow: none; min-height: 0; line-height: 1.4;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+body.nc_notification_page_nc-settings input:focus,
+body.nc_notification_page_nc-settings select:focus {
+    border-color: var(--nc-s-primary); box-shadow: 0 0 0 3px rgba(225,29,53,.18); outline: none;
+}
+/* Primary submit button */
+body.nc_notification_page_nc-settings .submit .button-primary,
+body.nc_notification_page_nc-settings p.submit .button-primary {
+    background: var(--nc-s-primary); border-color: var(--nc-s-primary); color: #fff;
+    border-radius: 9px; padding: 7px 18px; font-weight: 600; height: auto;
+    box-shadow: 0 1px 2px rgba(16,24,40,.08);
+}
+body.nc_notification_page_nc-settings .submit .button-primary:hover {
+    background: var(--nc-s-primary); border-color: var(--nc-s-primary); filter: brightness(1.07);
+}
