@@ -822,10 +822,17 @@ class NC_Metaboxes {
             }
         }
         
-        // Backward compatibility: 
+        // Backward compatibility:
         // If show_as_floating is set, mapping to old toast popup values for safety in case other parts code rely on it abruptly?
         // Actually, better to just rely on new fields in main.js
         // But let's clear old flags to avoid confusion if we ever revert?
         // No, keep it simple. We only save new fields.
+
+        // Bust the /nc/v1/notifications transient cache immediately on save.
+        // The hourly cron that's meant to do this (nc_hourly_cache_purge) only gets
+        // (re-)scheduled on plugin activation, so it silently stops existing after a
+        // file-replace update — without this, edits here take up to 5 minutes to
+        // appear on the frontend, which reads as "my change isn't saving".
+        update_option( 'nc_cache_version', time(), false );
 	}
 }
