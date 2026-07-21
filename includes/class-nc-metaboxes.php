@@ -64,6 +64,7 @@ class NC_Metaboxes {
         
         // Audience
         $audience = get_post_meta( $post->ID, 'nc_audience', true ) ?: 'all';
+        $device_target = get_post_meta( $post->ID, 'nc_device_target', true ) ?: 'all';
         $rules = get_post_meta( $post->ID, 'nc_rules', true ); // JSON string
         
         
@@ -311,7 +312,15 @@ class NC_Metaboxes {
                         <option value="administrator" <?php selected($audience, 'administrator'); ?>>Tylko administrator</option>
                     </select>
                 </p>
-                
+                <p>
+                    <label class="nc-label">Urządzenie</label>
+                    <select name="nc_device_target">
+                        <option value="all" <?php selected($device_target, 'all'); ?>>Wszystkie</option>
+                        <option value="mobile" <?php selected($device_target, 'mobile'); ?>>Tylko mobile (telefony + tablety)</option>
+                        <option value="desktop" <?php selected($device_target, 'desktop'); ?>>Tylko desktop</option>
+                    </select>
+                </p>
+
                 <h4>Gdzie pokazywać?</h4>
                 <div id="nc-rules-wrapper">
                     <?php 
@@ -544,6 +553,33 @@ class NC_Metaboxes {
                         Jeśli ustawisz <strong>1 Dzień</strong>, powiadomienie wróci do użytkownika następnego dnia po zamknięciu.
                         <br>0 lub puste = po zamknięciu nie wraca nigdy.
                     </p>
+
+                    <h4 style="margin-top:20px;">Twardy limit wyświetleń (Capping)</h4>
+                    <?php
+                        $cap_enabled = get_post_meta( $post->ID, 'nc_cap_enabled', true );
+                        $cap_min_hours = get_post_meta( $post->ID, 'nc_cap_min_hours', true ) ?: '24';
+                        $cap_max_shows = get_post_meta( $post->ID, 'nc_cap_max_shows', true );
+                        $cap_window_days = get_post_meta( $post->ID, 'nc_cap_window_days', true ) ?: '30';
+                    ?>
+                    <p>
+                        <label>
+                            <input type="checkbox" name="nc_cap_enabled" value="1" <?php checked($cap_enabled, '1'); ?>>
+                            Włącz twardy limit wyświetleń (niezależny od zamknięcia przez usera)
+                        </label>
+                    </p>
+                    <p>
+                        <label class="nc-label" style="width:auto; margin-right:10px;">Nie pokazuj ponownie przez:</label>
+                        <input type="number" name="nc_cap_min_hours" value="<?php echo esc_attr($cap_min_hours); ?>" style="width: 70px;" min="0"> godzin
+                    </p>
+                    <p>
+                        <label class="nc-label" style="width:auto; margin-right:10px;">Maks. liczba wyświetleń:</label>
+                        <input type="number" name="nc_cap_max_shows" value="<?php echo esc_attr($cap_max_shows); ?>" style="width: 70px;" min="0" placeholder="bez limitu">
+                        w oknie
+                        <input type="number" name="nc_cap_window_days" value="<?php echo esc_attr($cap_window_days); ?>" style="width: 70px;" min="1"> dni
+                    </p>
+                    <p class="description">
+                        Działa niezależnie od pola "Częstotliwość" powyżej — liczy realne wyświetlenia (nie tylko zamknięcia), więc pilnuje maksymalnej liczby pokazań nawet jeśli user nigdy nie kliknie X.
+                    </p>
                 </div>
             </div>
              <script>
@@ -706,9 +742,11 @@ class NC_Metaboxes {
         // Text/Select fields
         $fields = [
             'nc_title', 'nc_cta_label', 'nc_cta_target', 'nc_icon', 'nc_active_from', 'nc_active_to', 'nc_audience',
+            'nc_device_target',
             'nc_floating_delay', 'nc_floating_duration', 'nc_floating_width', 'nc_floating_position',
             'nc_max_width_desktop', 'nc_max_width_mobile',
             'nc_repeat_value', 'nc_repeat_unit',
+            'nc_cap_min_hours', 'nc_cap_max_shows', 'nc_cap_window_days',
             'nc_countdown_type', 'nc_countdown_date', 'nc_countdown_time', 'nc_countdown_label', 'nc_countdown_start_time',
             'nc_topbar_position', 'nc_topbar_style'
         ];
@@ -764,6 +802,7 @@ class NC_Metaboxes {
             'nc_show_as_floating',
             'nc_show_as_topbar', 'nc_topbar_permanent',
             'nc_countdown_enabled', 'nc_countdown_autohide',
+            'nc_cap_enabled',
             // Behavioral triggers
             'nc_trigger_delay', 'nc_trigger_exit_intent', 'nc_trigger_scroll_depth', 
             'nc_trigger_time_on_page', 'nc_trigger_inactivity', 'nc_trigger_click'

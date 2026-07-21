@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.6.0] - 2026-07-21
+### Added
+- **Device targeting** — new "Urządzenie" select in section 4 (Targetowanie) lets a notification be restricted to `Tylko mobile (telefony + tablety)` or `Tylko desktop`, on top of the existing audience rule. Uses `wp_is_mobile()` server-side against the requesting visitor, evaluated live per-request through the existing AJAX notification endpoint (not baked into cached page HTML).
+- **Hard impression cap** — new "Twardy limit wyświetleń (Capping)" fields alongside the existing dismiss-based "Częstotliwość" repeat: minimum hours between shows, max total shows, and the rolling window (in days) those shows are counted over. Unlike the existing repeat field, this tracks every real "shown" event independently of whether the user dismisses the notification, so a popup can be capped to e.g. 1 show/day and 10 shows/30 days even if the visitor never clicks the close button.
+
 ## [1.5.5] - 2026-07-08
 ### Fixed
 - **Blank space around image-only center popups** — `.nc-floating.nc-pos-center` sets `padding: 30px` with the exact same CSS specificity (two classes) as `.nc-has-image-only`'s `padding: 0` reset, and appears later in the stylesheet, so it silently won and left a padded white border around image-only notifications using the "Środek Ekranu (Popup)" position. Added a 3-class `.nc-floating.nc-pos-center.nc-has-image-only` rule to force padding to 0 regardless of source order.

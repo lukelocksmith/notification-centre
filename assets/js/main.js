@@ -66,6 +66,33 @@
         return true; // No repeat = dismissed forever
     }
 
+    // Hard impression cap - independent of dismissal. Tracks every real "shown"
+    // event so a notification stops appearing after N shows in a window, even
+    // if the user never clicks the close button.
+    let impressions = storageGet('nc_impressions', {});
+    function checkImpressionCap(n) {
+        const s = n.settings || {};
+        if (!s.cap_enabled) return false; // not capped, allow
+        const windowMs = (s.cap_window_days > 0 ? s.cap_window_days : 30) * 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        const times = (impressions[n.id] || []).filter(ts => now - ts < windowMs);
+        if (times.length !== (impressions[n.id] || []).length) {
+            impressions[n.id] = times;
+            storageSet('nc_impressions', impressions);
+        }
+        if (times.length === 0) return false;
+        const minGapMs = (s.cap_min_hours > 0 ? s.cap_min_hours : 24) * 60 * 60 * 1000;
+        const last = times[times.length - 1];
+        if (now - last < minGapMs) return true; // shown too recently
+        if (s.cap_max_shows > 0 && times.length >= s.cap_max_shows) return true; // hit the cap
+        return false;
+    }
+    function recordImpression(id) {
+        if (!Array.isArray(impressions[id])) impressions[id] = [];
+        impressions[id].push(Date.now());
+        storageSet('nc_impressions', impressions);
+    }
+
     // Unified icon renderer
     function renderIcon(icon, size) {
         if (typeof size === 'undefined') size = 40;
@@ -711,6 +738,12 @@
                 return;
             }
 
+            // Check hard impression cap (independent of dismissal)
+            if (checkImpressionCap(n)) {
+                ncLog(`NC: ID ${n.id} hidden by impression cap`);
+                return;
+            }
+
             // Check if notification has any behavioral triggers
             const triggers = n.settings.triggers || {};
             const hasBehavioralTriggers = triggers.exit_intent || triggers.scroll_depth ||
@@ -824,8 +857,9 @@
         triggerNotifications.forEach(n => {
             if (triggersFired[n.id]) return; // Already fired
 
-            // Check if notification was dismissed
+            // Check if notification was dismissed or hit its impression cap
             if (isDismissed(n.id, dismissedToastIds, n.settings.repeat_val, n.settings.repeat_unit)) return;
+            if (checkImpressionCap(n)) return;
 
             const triggers = n.settings.triggers || {};
             let shouldFire = false;
@@ -880,8 +914,9 @@
         while (floatingQueue.length > 0) {
             const peek = floatingQueue[0];
             if (shownSessionIds.includes(peek.id) ||
-                isDismissed(peek.id, dismissedToastIds, peek.settings.repeat_val, peek.settings.repeat_unit)) {
-                ncLog(`NC: Skipping ID ${peek.id} in queue (already shown or dismissed)`);
+                isDismissed(peek.id, dismissedToastIds, peek.settings.repeat_val, peek.settings.repeat_unit) ||
+                checkImpressionCap(peek)) {
+                ncLog(`NC: Skipping ID ${peek.id} in queue (already shown, dismissed, or capped)`);
                 floatingQueue.shift();
                 continue;
             }
@@ -920,13 +955,16 @@
     function showFloating(n) {
         ncLog('NC: showFloating() called for ID', n.id, n.title);
 
-        // Final guard: check if dismissed (race condition protection)
-        if (isDismissed(n.id, dismissedToastIds, n.settings.repeat_val, n.settings.repeat_unit)) {
-            ncLog(`NC: ID ${n.id} was dismissed, skipping and showing next`);
+        // Final guard: check if dismissed or capped (race condition protection)
+        if (isDismissed(n.id, dismissedToastIds, n.settings.repeat_val, n.settings.repeat_unit) || checkImpressionCap(n)) {
+            ncLog(`NC: ID ${n.id} was dismissed or capped, skipping and showing next`);
             activeFloatingId = null;
             setTimeout(() => showNextFromGlobalQueue(), 50);
             return;
         }
+
+        // Record the impression now that we're committed to showing it
+        recordImpression(n.id);
 
         // Prevent duplicate in DOM
         if (document.querySelector(`.nc-floating[data-id="${n.id}"]`)) {

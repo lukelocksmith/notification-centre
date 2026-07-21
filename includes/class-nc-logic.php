@@ -134,7 +134,12 @@ class NC_Logic {
 			$user = wp_get_current_user();
 			if ( ! in_array( 'administrator', (array) $user->roles, true ) ) return false;
 		}
-        
+
+		// 2.5 Device Check
+		$device_target = $get('nc_device_target') ?: 'all';
+		if ( $device_target === 'mobile' && ! wp_is_mobile() ) return false;
+		if ( $device_target === 'desktop' && wp_is_mobile() ) return false;
+
         // 3. Page Rules Check
         if ( ! self::check_page_rules( $id, $context, $meta ) ) return false;
 
@@ -264,6 +269,12 @@ class NC_Logic {
                
                'repeat_val' => (int)($get('nc_repeat_value')),
                'repeat_unit' => $get('nc_repeat_unit') ?: 'days',
+
+               'cap_enabled' => $get('nc_cap_enabled') === '1',
+               'cap_min_hours' => (int)($get('nc_cap_min_hours') ?: 24),
+               'cap_max_shows' => (int)($get('nc_cap_max_shows')),
+               'cap_window_days' => (int)($get('nc_cap_window_days') ?: 30),
+
                'countdown' => [
                    'enabled' => $get('nc_countdown_enabled') === '1',
                    'type' => $get('nc_countdown_type') ?: 'date',
