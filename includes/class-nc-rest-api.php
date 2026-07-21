@@ -182,9 +182,13 @@ class NC_Rest_Api {
             'user_id' => $user_id
         ];
 
-        // Transient cache (5 min) keyed by context hash
+        // Transient cache (5 min) keyed by context hash + device class.
+        // Device class must be part of the key: is_valid() filters by wp_is_mobile(),
+        // and without this the first request (mobile or desktop) to hit a cold cache
+        // would freeze its device-filtered result for every other device for 5 minutes.
+        $device_class = wp_is_mobile() ? 'mobile' : 'desktop';
         $version = get_option( 'nc_cache_version', 0 );
-        $cache_key = 'nc_api_' . md5( $version . wp_json_encode( $context ) );
+        $cache_key = 'nc_api_' . md5( $version . $device_class . wp_json_encode( $context ) );
         $notifications = get_transient( $cache_key );
 
         if ( $notifications === false ) {
@@ -192,12 +196,12 @@ class NC_Rest_Api {
             set_transient( $cache_key, $notifications, 300 );
         }
 
-        // Allow LSCache to cache responses for anonymous users only
-        if ( $user_id === 0 ) {
-            header( 'X-LiteSpeed-Cache-Control: public, max-age=300' );
-        } else {
-            header( 'X-LiteSpeed-Cache-Control: no-cache' );
-        }
+        // Device-targeted notifications make the response device-dependent, and the
+        // LiteSpeed edge cache on this site isn't configured to vary by device
+        // (litespeed.conf.cache-mobile is off) — a "public" edge-cache directive here
+        // would freeze one device's result for every visitor. Always no-cache at the
+        // edge; the transient above still avoids repeated DB queries per device.
+        header( 'X-LiteSpeed-Cache-Control: no-cache' );
 
 		return rest_ensure_response( $notifications );
 	}

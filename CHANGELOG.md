@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.6.1] - 2026-07-21
+### Fixed
+- **Device-targeted notifications leaking across devices via cache** — the `/nc/v1/notifications` REST response was cached (5-min transient, keyed only by URL/post/user context) and served to the LiteSpeed edge cache as `public`. Since device-restricted notifications depend on `wp_is_mobile()`, whichever device class hit a cold cache first had its filtered result frozen and served to every other device for up to 5 minutes — and the site's LiteSpeed config doesn't vary its edge cache by device (`cache-mobile` is off), so this wasn't just a transient-cache issue. Fixed by including the device class in the transient cache key and always sending `no-cache` to the edge for this endpoint.
+
 ## [1.6.0] - 2026-07-21
 ### Added
 - **Device targeting** — new "Urządzenie" select in section 4 (Targetowanie) lets a notification be restricted to `Tylko mobile (telefony + tablety)` or `Tylko desktop`, on top of the existing audience rule. Uses `wp_is_mobile()` server-side against the requesting visitor, evaluated live per-request through the existing AJAX notification endpoint (not baked into cached page HTML).
