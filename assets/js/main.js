@@ -1060,6 +1060,7 @@
 
         const effectiveTitle = n.settings.hide_title ? '' : n.title;
         const hasContent = !!(effectiveTitle || n.body || n.cta_label);
+        console.log('NC_DEBUG', n.id, JSON.stringify({ hide_title: n.settings.hide_title, title: n.title, body: n.body, cta_label: n.cta_label, effectiveTitle, hasContent, image_url: n.image_url }));
         // image_url is a WordPress attachment URL generated server-side via wp_get_attachment_image_url() — safe to use in src
         const floatingImageTag = n.image_url ? `<img src="${n.image_url}" alt="">` : '';
         const floatingImageInner = (!hasContent && n.cta_url)
