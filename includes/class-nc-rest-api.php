@@ -182,13 +182,22 @@ class NC_Rest_Api {
             'user_id' => $user_id
         ];
 
-        // Transient cache (5 min) keyed by context hash + device class.
-        // Device class must be part of the key: is_valid() filters by wp_is_mobile(),
+        // Transient cache (5 min). The cache KEY intentionally uses only the URL *path*
+        // (no query string), so /page?a=1, /page?a=2, … all share one transient instead
+        // of spawning an unbounded number of them (cache-busting + wp_options bloat).
+        // Rule matching inside NC_Logic still receives the full $context['url'].
+        //
+        // Device class must also be part of the key: is_valid() filters by wp_is_mobile(),
         // and without this the first request (mobile or desktop) to hit a cold cache
         // would freeze its device-filtered result for every other device for 5 minutes.
+        $path_for_key = wp_parse_url( $context['url'], PHP_URL_PATH ) ?: '/';
         $device_class = wp_is_mobile() ? 'mobile' : 'desktop';
         $version = get_option( 'nc_cache_version', 0 );
-        $cache_key = 'nc_api_' . md5( $version . $device_class . wp_json_encode( $context ) );
+        $cache_key = 'nc_api_' . md5( $version . $device_class . wp_json_encode( [
+            'path'    => $path_for_key,
+            'post_id' => $context['post_id'],
+            'user_id' => $user_id,
+        ] ) );
         $notifications = get_transient( $cache_key );
 
         if ( $notifications === false ) {

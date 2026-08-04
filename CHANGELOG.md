@@ -1,18 +1,64 @@
 # Changelog
 
-## [1.6.2] - 2026-07-21
-### Fixed
-- **Edits to a notification took up to 5 minutes to appear on the frontend** — `/nc/v1/notifications` responses are cached for 5 minutes via transient, invalidated by bumping the `nc_cache_version` option, which was only ever supposed to happen via the hourly `nc_hourly_cache_purge` cron. That cron is only (re-)scheduled on plugin activation (`register_activation_hook`), so a file-replace update silently drops it from the schedule — it wasn't running on production. Now `nc_cache_version` is bumped directly whenever a notification is saved in wp-admin, so changes are live immediately regardless of whether the cron exists.
+## [1.9.0] - 2026-07-23
+### Merged
+- **Scalenie dwóch równoległych linii rozwoju**: gałęzi `feat/gravity-forms-popup` (1.6.0–1.8.4 — formularze w popupach, hardening bezpieczeństwa/XSS, wydajność, restyle UI) z gałęzią `main` (1.6.0–1.6.3 autorstwa Filipa Górnego — device targeting, twardy limit wyświetleń, poprawki cache). Numer 1.6.x został użyty niezależnie przez obie linie; ta wersja porządkuje historię i wydaje wspólny, spójny build.
+### Added (z linii `main`)
+- **Device targeting** — select „Urządzenie" (sekcja Targetowanie) ogranicza powiadomienie do `Tylko mobile (telefony + tablety)` lub `Tylko desktop`, oceniane live per-request przez `wp_is_mobile()`.
+- **Twardy limit wyświetleń (Capping)** — min. godziny między pokazami, maks. liczba pokazów i okno (w dniach), liczone niezależnie od tego, czy użytkownik zamknął powiadomienie.
+### Fixed (z linii `main`)
+- **Powiadomienia device-targeted przeciekały między urządzeniami przez cache** — klucz transientu REST uwzględnia teraz klasę urządzenia, a endpoint zawsze wysyła `no-cache` na edge (LiteSpeed nie waruje po device). Zintegrowane z liczeniem klucza cache po **ścieżce** z tej gałęzi.
+- **Zmiany powiadomienia widoczne dopiero po ~5 min** — `nc_cache_version` bumpowany bezpośrednio przy zapisie w wp-admin, niezależnie od tego czy cron istnieje.
+### Removed
+- Tymczasowy `console.log('NC_DEBUG', …)` z `showFloating()` (dodany w 1.6.3 do diagnozy `hide_title`).
 
-## [1.6.1] - 2026-07-21
+## [1.8.4] - 2026-07-17
 ### Fixed
-- **Device-targeted notifications leaking across devices via cache** — the `/nc/v1/notifications` REST response was cached (5-min transient, keyed only by URL/post/user context) and served to the LiteSpeed edge cache as `public`. Since device-restricted notifications depend on `wp_is_mobile()`, whichever device class hit a cold cache first had its filtered result frozen and served to every other device for up to 5 minutes — and the site's LiteSpeed config doesn't vary its edge cache by device (`cache-mobile` is off), so this wasn't just a transient-cache issue. Fixed by including the device class in the transient cache key and always sending `no-cache` to the edge for this endpoint.
+- **„array offset on null" z Gravity Forms przy usuniętym formularzu** — jeśli w cache'owanej liście `nc_gravityform_ids` został ID formularza, który już nie istnieje, `gravity_form_enqueue_scripts()` odpalało wewnętrzne funkcje GF na `null` i sypało warningami na froncie. Dodano strażnika w pętli enqueue: `GFAPI::get_form()` pomija nieistniejące formularze. Lista i tak jest przeliczana przy zapisie — to zabezpieczenie na wypadek osieroconego ID.
 
-## [1.6.0] - 2026-07-21
+## [1.8.3] - 2026-07-17
+### Changed / UX
+- **Strona ustawień (wp-admin) — nowoczesny restyle** (styl shadcn), scope'owany do `body.nc_notification_page_nc-settings`: nagłówki sekcji + `form-table` jako karty z hairline borderem, inputy/selecty w stylu shadcn z focus-ringiem brand, przycisk „Zapisz" w kolorze brand. Wyłącznie CSS — bez zmian opcji.
+
+## [1.8.2] - 2026-07-17
+### Changed / UX
+- **Ekran edytora powiadomienia (wp-admin) — nowoczesny restyle** (styl shadcn), scope'owany wyłącznie do metaboxa `#nc_settings_box`: każda sekcja jako osobna karta z hairline borderem i cieniem, nagłówki sekcji jako tytuły kart, labelki ułożone pionowo, inputy/selecty/textarea w stylu shadcn z focus-ringiem w kolorze brand, reguły targetowania i przyciski dopracowane. Wyłącznie CSS — zero zmian w markupie, nazwach pól ani logice zapisu.
+
+## [1.8.1] - 2026-07-17
+### Changed / UX
+- **Ekran listy powiadomień (wp-admin) — nowoczesny restyle** (styl shadcn), scope'owany wyłącznie do `edit.php?post_type=nc_notification`: tabela jako zaokrąglona karta z hairline borderami i hoverem wierszy, nagłówki jako uppercase-labelki, przycisk „Dodaj powiadomienie" w kolorze brand, kolumny liczbowe wyrównane do prawej z `tabular-nums`. Dodano szary pill `.nc-status-inactive` dla nieopublikowanych powiadomień (Szkic/Kosz).
+
+## [1.8.0] - 2026-07-16
 ### Added
-- **Device targeting** — new "Urządzenie" select in section 4 (Targetowanie) lets a notification be restricted to `Tylko mobile (telefony + tablety)` or `Tylko desktop`, on top of the existing audience rule. Uses `wp_is_mobile()` server-side against the requesting visitor, evaluated live per-request through the existing AJAX notification endpoint (not baked into cached page HTML).
-- **Hard impression cap** — new "Twardy limit wyświetleń (Capping)" fields alongside the existing dismiss-based "Częstotliwość" repeat: minimum hours between shows, max total shows, and the rolling window (in days) those shows are counted over. Unlike the existing repeat field, this tracks every real "shown" event independently of whether the user dismisses the notification, so a popup can be capped to e.g. 1 show/day and 10 shows/30 days even if the visitor never clicks the close button.
+- **Tryb treści „Własny HTML/CSS"** — nowe pole wyboru w edytorze powiadomienia: obok „Pól strukturalnych" można wybrać wklejenie surowego HTML/CSS (edytor kodu CodeMirror). Kod renderuje się 1:1 w popupie/szufladzie, obsługuje `<style>` i shortcode'y (w tym formularze). Bramka bezpieczeństwa: użytkownik z uprawnieniem `unfiltered_html` (admin) zapisuje kod surowo (łącznie z `<script>`); pozostali przez `wp_kses` (bez `<script>`, z dozwolonym `<style>`). Nowe meta: `nc_content_mode`, `nc_raw_html`, `nc_raw_trusted` (rejestrowane z `sanitize_callback`). Wykrywanie formularzy (`scan_notification_form_ids`) obejmuje oba pola treści.
+### Fixed
+- **Formularze nie dostawały assetów przy pierwszym zapisie** — `refresh_form_id_cache` był podpięty pod `save_post_nc_notification`, który w WordPress odpala PRZED generycznym `save_post` (którym metabox zapisuje treść), więc skan czytał starą treść. Przepięte na `save_post` @20 (po zapisie meta) + haki `trashed_post`/`untrashed_post`.
 
+## [1.7.0] - 2026-07-16
+### Security
+- **Stored XSS przez treść powiadomienia (`nc_description`) zamknięty** — body renderowane teraz przez `do_shortcode( wp_kses_post( $desc ) )`: wstrzyknięty `<script>`/`on*=` jest wycinany, a shortcode'y formularzy (Gravity/Fluent) działają dalej (HTML formularza dokładany po kses). Dodano `register_meta()` z `sanitize_callback` dla `nc_description`/`nc_icon`/`nc_title_custom_css` — domyka bypass przez natywny metabox „Custom Fields".
+- **Stored XSS przez `nc_icon`** — `renderIcon()` escapuje teraz `src` (`safeUrl`) i treść (`esc`), waliduje dashicony.
+- **CPT `map_meta_cap`** + filtrowalna capability (`nc_manage_capability`); `handle_duplicate()` sprawdza uprawnienia.
+- **Token GitHub** przekazywany nagłówkiem `Authorization: Bearer` zamiast w URL (koniec wycieku do logów/transientów); token czyszczony przy odinstalowaniu.
+### Changed / UX
+- **Nowoczesny restyle** (styl typu shadcn) szuflady, popupów, top bara, dzwonka, przycisków, badge i countdownu — addytywnie, bez nadpisywania kolorów użytkownika; `:focus-visible` + `prefers-reduced-motion`.
+- **Kolumna „Status"** uwzględnia status wpisu — Szkic/Kosz/itd. pokazują się jako nieaktywne zamiast mylącego „Aktywne".
+- Usunięto martwą globalną opcję „Pozycja powiadomień (Toast)".
+### Performance
+- Usunięto **cogodzinny `litespeed_purge_all`** kasujący cache całej witryny (ekspiracja przez `nc_cache_version` + 5-min cache REST wystarcza).
+- Skan shortcode'ów formularzy przeniesiony z frontu na `save_post` (opcja `autoload=false`), z fallbackiem.
+- Klucz cache REST liczony po **ścieżce** (bez query stringu) — koniec cache-bustingu i rozdmuchania `wp_options`.
+- Tracking `view` deduplikowany per sesja i wysyłany dopiero przy realnym pokazaniu (szuflada: po otwarciu); ticker countdownu on-demand; cleanup transientów rozszerzony + poprawny escape `_` w LIKE; harmonogramy cron w activation.
+
+## [1.6.0] - 2026-07-16
+### Added
+- **Gravity Forms support inside notifications/popups** — a `[gravityform id="X" ajax="true"]` embedded in a notification's description now submits without reloading the page, mirroring the existing Fluent Forms support. Three parts:
+  - **PHP (`notification-centre.php`)** — detects `[gravityform(s)]` shortcodes in `nc_description` postmeta (cached in the `nc_gravityform_ids` transient, invalidated on notification save) and enqueues Gravity Forms' core/AJAX scripts on every page a popup can appear on, so `gform.submission` & co. exist even where no form is natively present.
+  - **PHP (`class-nc-logic.php`)** — forces `gform_init_scripts_footer` to `false` while rendering a GF-containing body in the REST context, so GF's per-form init `<script>` is emitted inline (wp_footer never fires for the REST render).
+  - **JS (`assets/js/main.js`)** — new `window.ncInitGravityForms(container)` re-executes the inline `<script>`s that `innerHTML` leaves inert (recreating them so the browser runs them) and fires `gform_post_render`. Wired into both `renderList()` and `showFloating()` (the center-overlay popup path), plus a submit-guard safety net that prevents a page reload if a GF instance failed to wire its AJAX iframe.
+
+### Fixed
+- **Embedded forms/rich HTML rendered as literal text in notifications** — the notification body was escaped client-side (`esc(n.body)`) in the drawer list and floating popup, which turned any shortcode-rendered HTML (Gravity Forms, Fluent Forms, formatting) into visible escaped text instead of a working form. Admin-authored bodies now render as HTML again. This is safe because the raw description is sanitized server-side with `sanitize_textarea_field()` on save (strips all HTML tags), so the only markup reaching the frontend is trusted shortcode output; dynamic Woo per-user notification bodies (`type: "user"`) stay escaped.
 ## [1.5.5] - 2026-07-08
 ### Fixed
 - **Blank space around image-only center popups** — `.nc-floating.nc-pos-center` sets `padding: 30px` with the exact same CSS specificity (two classes) as `.nc-has-image-only`'s `padding: 0` reset, and appears later in the stylesheet, so it silently won and left a padded white border around image-only notifications using the "Środek Ekranu (Popup)" position. Added a 3-class `.nc-floating.nc-pos-center.nc-has-image-only` rule to force padding to 0 regardless of source order.

@@ -22,6 +22,14 @@ wp_clear_scheduled_hook( 'nc_cleanup_expired_transients' );
 wp_clear_scheduled_hook( 'nc_abandoned_cart_check' );
 wp_clear_scheduled_hook( 'nc_user_notifications_cleanup' );
 
+// SEC-N3: always remove secrets/sensitive options on uninstall, even though other
+// configuration and notification data are intentionally preserved. A leftover
+// GitHub token in wp_options would be a credential leak after the plugin is gone.
+delete_option( 'nc_github_token' );
+
+// Drop the cached GitHub release payload transient too (no secret, but stale).
+delete_transient( 'nc_github_update_data' );
+
 // Clean up expired transients only (not options)
 global $wpdb;
 $wpdb->query(

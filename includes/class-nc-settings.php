@@ -34,6 +34,7 @@ class NC_Settings {
 	 */
 	public function invalidate_notification_caches() {
 		delete_transient( 'nc_fluentform_ids' );
+		delete_transient( 'nc_gravityform_ids' );
 		update_option( 'nc_cache_version', time(), false );
 
 		// Purge LSCache — inline notifications are baked into cached HTML
@@ -64,7 +65,7 @@ class NC_Settings {
 		// Text/Select fields - sanitize with sanitize_text_field
 		$text_settings = [
 			'nc_radius_type', 'nc_radius_custom', 'nc_display_mode', 'nc_drawer_width',
-			'nc_toast_position', 'nc_global_bg', 'nc_global_text', 'nc_global_border',
+			'nc_global_bg', 'nc_global_text', 'nc_global_border',
 			'nc_global_btn_bg', 'nc_global_btn_text', 'nc_global_btn_hover_bg', 'nc_global_btn_hover_text',
 			'nc_close_color', 'nc_close_bg', 'nc_close_hover_color', 'nc_close_hover_bg',
 			'nc_bell_bg', 'nc_bell_style', 'nc_bell_color', 'nc_bell_hover_bg', 'nc_bell_hover_color',
@@ -188,18 +189,6 @@ class NC_Settings {
                                 <input type="checkbox" name="nc_enable_sound" value="1" <?php checked( get_option( 'nc_enable_sound' ), 1 ); ?>>
                                 Odtwarzaj subtelny dźwięk przy wyświetleniu powiadomienia (Toast)
                             </label>
-                        </td>
-                    </tr>
-                    <tr valign="top">
-                        <th scope="row">Pozycja powiadomień (Toast)</th>
-                        <td>
-                            <?php $toast_pos = get_option( 'nc_toast_position', 'top-right' ); ?>
-                            <select name="nc_toast_position">
-                                <option value="top-right" <?php selected($toast_pos, 'top-right'); ?>>Prawy Górny (Top-Right)</option>
-                                <option value="top-left" <?php selected($toast_pos, 'top-left'); ?>>Lewy Górny (Top-Left)</option>
-                                <option value="bottom-right" <?php selected($toast_pos, 'bottom-right'); ?>>Prawy Dolny (Bottom-Right)</option>
-                                <option value="bottom-left" <?php selected($toast_pos, 'bottom-left'); ?>>Lewy Dolny (Bottom-Left)</option>
-                            </select>
                         </td>
                     </tr>
                     <tr valign="top">
