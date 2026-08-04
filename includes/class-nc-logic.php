@@ -317,6 +317,11 @@ class NC_Logic {
                'hide_title' => $is_raw ? true : ( $get('nc_hide_title') === '1' ),
                'dismissible' => ($get('nc_pinned') === '1') ? false : ($get('nc_dismissible') === '1'),
                'pinned' => $get('nc_pinned') === '1',
+               // wp_is_mobile() (server-side device check above) is User-Agent based and
+               // has no idea about actual viewport width — exposed here so the front-end
+               // can add a real window-width guard (main.js) against UA spoofing / mobile
+               // emulation reporting a desktop-sized window as "mobile".
+               'device_target' => $get('nc_device_target') ?: 'all',
                
                // Legacy Toast (keep for backward compatibility)
                'toast' => $get('nc_show_as_toast') === '1' || $get('nc_show_as_floating') === '1',

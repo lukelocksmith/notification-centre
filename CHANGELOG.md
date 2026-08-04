@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.9.1] - 2026-08-04
+### Fixed
+- **Device targeting "mobile" mógł pokazać popup na szerokim desktopowym oknie** — `wp_is_mobile()` (device targeting z 1.6.0) sprawdza wyłącznie User-Agent, nie faktyczną szerokość viewportu, więc mobilny/tabletowy UA (np. tryb "Wersja mobilna" przeglądarki albo emulacja urządzenia w DevTools) przepuszczał powiadomienie niezależnie od realnej szerokości okna. Dodano niezależny guard po stronie frontendu (`main.js`): powiadomienie z `device_target=mobile` pokazuje się teraz tylko gdy realne okno ma < 992px (analogicznie `desktop` wymaga >= 992px), sprawdzane w momencie faktycznego wyświetlenia popupu (po ewentualnym opóźnieniu/triggerze), nie tylko przy pobraniu danych.
+
 ## [1.9.0] - 2026-07-23
 ### Merged
 - **Scalenie dwóch równoległych linii rozwoju**: gałęzi `feat/gravity-forms-popup` (1.6.0–1.8.4 — formularze w popupach, hardening bezpieczeństwa/XSS, wydajność, restyle UI) z gałęzią `main` (1.6.0–1.6.3 autorstwa Filipa Górnego — device targeting, twardy limit wyświetleń, poprawki cache). Numer 1.6.x został użyty niezależnie przez obie linie; ta wersja porządkuje historię i wydaje wspólny, spójny build.

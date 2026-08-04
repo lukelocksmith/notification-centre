@@ -96,6 +96,22 @@
         storageSet('nc_impressions', impressions);
     }
 
+    // wp_is_mobile() (server-side "nc_device_target" filter) reads the User-Agent
+    // header only — it has no idea about the actual viewport. A desktop browser in
+    // "Request mobile site" mode, or DevTools device emulation, sends a mobile UA
+    // while the window can still be full desktop width. Guard the real display with
+    // the actual window width so a mobile/tablet-targeted popup never shows on a
+    // window this wide, regardless of what UA the request arrived with.
+    const NC_MOBILE_MAX_WIDTH = 992;
+    function matchesDeviceWidth(settings) {
+        const target = (settings && settings.device_target) || 'all';
+        if (target === 'all') return true;
+        const isNarrow = window.innerWidth < NC_MOBILE_MAX_WIDTH;
+        if (target === 'mobile') return isNarrow;
+        if (target === 'desktop') return !isNarrow;
+        return true;
+    }
+
     // Unified icon renderer
     function renderIcon(icon, size) {
         if (typeof size === 'undefined') size = 40;
@@ -1140,6 +1156,16 @@
         // Final guard: check if dismissed or capped (race condition protection)
         if (isDismissed(n.id, dismissedToastIds, n.settings.repeat_val, n.settings.repeat_unit) || checkImpressionCap(n)) {
             ncLog(`NC: ID ${n.id} was dismissed or capped, skipping and showing next`);
+            activeFloatingId = null;
+            setTimeout(() => showNextFromGlobalQueue(), 50);
+            return;
+        }
+
+        // Final guard: real viewport width vs device targeting (see matchesDeviceWidth
+        // above). Checked here — the actual display moment, after any trigger delay —
+        // not when the item was queued, since the window can be resized during the wait.
+        if (!matchesDeviceWidth(n.settings)) {
+            ncLog(`NC: ID ${n.id} skipped, window width ${window.innerWidth}px doesn't match device_target "${n.settings.device_target}"`);
             activeFloatingId = null;
             setTimeout(() => showNextFromGlobalQueue(), 50);
             return;
