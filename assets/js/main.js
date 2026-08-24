@@ -1204,6 +1204,11 @@
             container.className = 'nc-pos-center-overlay';
             container.dataset.id = n.id;
             document.body.appendChild(container);
+            // Force a synchronous reflow before the opacity/fade-in animation starts.
+            // Without this, WebKit sometimes never paints a freshly inserted
+            // position:fixed + opacity:0 element until the next scroll-driven repaint,
+            // leaving the popup invisible (but present, blocking clicks) indefinitely.
+            void container.offsetHeight;
             // Events for overlay
             container.addEventListener('click', (e) => {
                 // Don't close if clicking on form elements (buttons, inputs, etc.)
