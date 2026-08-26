@@ -251,6 +251,12 @@ class NC_Metaboxes {
                         </select>
                         <span class="description" style="display:block; margin-left:184px; margin-top:5px; color:#888;">Kompaktowy: szerokość kontenera, zaokrąglony i z marginesem.</span>
                     </p>
+                    <p>
+                        <label class="nc-label">Priorytet</label>
+                        <?php $topbar_priority = get_post_meta($post->ID, 'nc_topbar_priority', true); ?>
+                        <input type="number" name="nc_topbar_priority" value="<?php echo esc_attr($topbar_priority !== '' ? $topbar_priority : '0'); ?>" step="1" style="width:80px">
+                        <span class="description" style="display:block; margin-left:184px; margin-top:5px; color:#888;">Gdy kilka pasków jest aktywnych naraz, rotują się w karuzeli. Wyższy priorytet = pokazywany jako pierwszy po wejściu na stronę. Domyślnie 0.</span>
+                    </p>
                     <label class="nc-sub-option">
                         <input type="checkbox" name="nc_topbar_permanent" value="1" <?php checked($topbar_permanent, '1'); ?>>
                         Bez możliwości zamknięcia (Permanentne)
@@ -867,7 +873,7 @@ class NC_Metaboxes {
             'nc_repeat_value', 'nc_repeat_unit',
             'nc_cap_min_hours', 'nc_cap_max_shows', 'nc_cap_window_days',
             'nc_countdown_type', 'nc_countdown_date', 'nc_countdown_time', 'nc_countdown_label', 'nc_countdown_start_time',
-            'nc_topbar_position', 'nc_topbar_style'
+            'nc_topbar_position', 'nc_topbar_style', 'nc_topbar_priority'
         ];
         
         foreach($fields as $field) {

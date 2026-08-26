@@ -350,6 +350,8 @@ class NC_Logic {
                'topbar_position' => $get('nc_topbar_position') ?: 'above',
                'topbar_style' => $get('nc_topbar_style') ?: 'full',
                'topbar_permanent' => $get('nc_topbar_permanent') === '1',
+               // Higher value = shown first in the top bar carousel (default 0).
+               'topbar_priority' => (int) $get('nc_topbar_priority'),
                
                'repeat_val' => (int)($get('nc_repeat_value')),
                'repeat_unit' => $get('nc_repeat_unit') ?: 'days',

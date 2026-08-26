@@ -1590,6 +1590,13 @@
             return !isDismissed(n.id, dismissed, n.settings.repeat_val, n.settings.repeat_unit);
         });
 
+        // Order the carousel: higher topbar_priority is rendered first, so it is the slide
+        // a visitor sees on page load. Equal priority keeps the server order (pinned, then
+        // newest first) - Array.sort is stable, so no item jumps around between renders.
+        topBarItems.sort(function(a, b) {
+            return (b.settings.topbar_priority || 0) - (a.settings.topbar_priority || 0);
+        });
+
         if (topBarItems.length === 0) {
             topBarContainer.style.display = 'none';
             document.body.classList.remove('nc-topbar-active');

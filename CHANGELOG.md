@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.9.3] - 2026-08-26
+### Added
+- **Priorytet paska górnego (Top Bar)** — nowe pole „Priorytet" w sekcji *Pasek na górze*. Gdy kilka pasków jest aktywnych w tym samym czasie, wtyczka nadal rotuje je w karuzeli, ale kolejność nie zależy już od daty publikacji: pasek z wyższym priorytetem renderowany jest jako pierwszy slajd, czyli ten, który odwiedzający widzi zaraz po wejściu na stronę. Przy równym priorytecie obowiązuje dotychczasowa kolejność (przypięte, potem najnowsze). Domyślna wartość `0` nie zmienia zachowania istniejących pasków.
+
 ## [1.9.1] - 2026-08-04
 ### Fixed
 - **Device targeting "mobile" mógł pokazać popup na szerokim desktopowym oknie** — `wp_is_mobile()` (device targeting z 1.6.0) sprawdza wyłącznie User-Agent, nie faktyczną szerokość viewportu, więc mobilny/tabletowy UA (np. tryb "Wersja mobilna" przeglądarki albo emulacja urządzenia w DevTools) przepuszczał powiadomienie niezależnie od realnej szerokości okna. Dodano niezależny guard po stronie frontendu (`main.js`): powiadomienie z `device_target=mobile` pokazuje się teraz tylko gdy realne okno ma < 992px (analogicznie `desktop` wymaga >= 992px), sprawdzane w momencie faktycznego wyświetlenia popupu (po ewentualnym opóźnieniu/triggerze), nie tylko przy pobraniu danych.
