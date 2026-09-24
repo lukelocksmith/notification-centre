@@ -181,6 +181,11 @@ class NC_Rest_Api {
             'post_id' => absint( $request->get_param('pid') ?: 0 ),
             'user_id' => $user_id
         ];
+        $device_param = $request->get_param( 'd' );
+        if ( $device_param === 'mobile' || $device_param === 'desktop' ) {
+            $context['device'] = $device_param;
+        }
+        $is_preview = ! empty( $_GET['nc_preview'] ) && current_user_can( 'manage_options' );
 
         // Transient cache (5 min). The cache KEY intentionally uses only the URL *path*
         // (no query string), so /page?a=1, /page?a=2, … all share one transient instead
@@ -191,26 +196,35 @@ class NC_Rest_Api {
         // and without this the first request (mobile or desktop) to hit a cold cache
         // would freeze its device-filtered result for every other device for 5 minutes.
         $path_for_key = wp_parse_url( $context['url'], PHP_URL_PATH ) ?: '/';
-        $device_class = wp_is_mobile() ? 'mobile' : 'desktop';
+        $device_class = $context['device'] ?? ( wp_is_mobile() ? 'mobile' : 'desktop' );
         $version = get_option( 'nc_cache_version', 0 );
         $cache_key = 'nc_api_' . md5( $version . $device_class . wp_json_encode( [
             'path'    => $path_for_key,
             'post_id' => $context['post_id'],
             'user_id' => $user_id,
         ] ) );
-        $notifications = get_transient( $cache_key );
+        // Neither cache may outlive the next schedule/countdown boundary (e.g. the
+        // 10:00 "order today" bar must not live on until 10:05).
+        $ttl   = 300;
+        $until = NC_Logic::seconds_until_change( $context );
+        if ( $until !== null ) $ttl = min( $ttl, $until );
 
+        $notifications = $is_preview ? false : get_transient( $cache_key );
         if ( $notifications === false ) {
             $notifications = NC_Logic::get_valid_notifications( $context );
-            set_transient( $cache_key, $notifications, 300 );
+            if ( ! $is_preview ) set_transient( $cache_key, $notifications, $ttl );
         }
 
-        // Device-targeted notifications make the response device-dependent, and the
-        // LiteSpeed edge cache on this site isn't configured to vary by device
-        // (litespeed.conf.cache-mobile is off) — a "public" edge-cache directive here
-        // would freeze one device's result for every visitor. Always no-cache at the
-        // edge; the transient above still avoids repeated DB queries per device.
-        header( 'X-LiteSpeed-Cache-Control: no-cache' );
+        // Guests without a device param (old cached main.js) get a UA-dependent answer,
+        // which must not be edge-cached: LiteSpeed does not vary this site by device.
+        // With 'd' the device is part of the URL, so the public cache is safe and every
+        // page view no longer boots WordPress just to read the same list.
+        if ( $user_id === 0 && ! $is_preview && isset( $context['device'] ) ) {
+            do_action( 'litespeed_control_set_ttl', $ttl );
+        } else {
+            do_action( 'litespeed_control_set_nocache', 'nc: per-user or device-sniffed response' );
+            header( 'X-LiteSpeed-Cache-Control: no-cache' );
+        }
 
 		return rest_ensure_response( $notifications );
 	}

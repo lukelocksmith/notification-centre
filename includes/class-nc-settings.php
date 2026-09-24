@@ -18,6 +18,90 @@ class NC_Settings {
 		add_action( 'trashed_post', [ $this, 'maybe_invalidate_on_delete' ] );
 		add_action( 'deleted_post', [ $this, 'maybe_invalidate_on_delete' ] );
 		add_action( 'untrashed_post', [ $this, 'maybe_invalidate_on_delete' ] );
+
+		// Full-page cache holds only what the page HTML really contains from NC: the
+		// server-rendered top bar and the form-asset config. Purge on those changes only,
+		// never on popup edits, drafts or autosaves (those reach visitors via REST).
+		add_action( 'pre_post_update', [ $this, 'remember_bar_state' ] );
+		add_action( 'save_post', [ $this, 'maybe_purge_after_save' ], 30, 2 );
+		add_action( 'wp_trash_post', [ $this, 'maybe_purge_before_removal' ] );
+		add_action( 'before_delete_post', [ $this, 'maybe_purge_before_removal' ] );
+		add_action( 'update_option_nc_fluentform_ids', [ $this, 'purge_pages' ] );
+		add_action( 'update_option_nc_gravityform_ids', [ $this, 'purge_pages' ] );
+	}
+
+	private $was_live_bar = [];
+	private $was_bar_tags = [];
+
+	/**
+	 * Page-cache tags of the pages a bar can appear on, or null when that's "anywhere".
+	 * Only pure "show on page ID / front page" rule sets map to single pages
+	 * (LiteSpeed tags a post's page with Po.<ID>, the front page with F).
+	 */
+	private static function bar_cache_tags( $post_id ) {
+		$rules = get_post_meta( $post_id, 'nc_rules_data', true );
+		if ( empty( $rules ) || ! is_array( $rules ) ) return null;
+		$tags = [];
+		foreach ( $rules as $rule ) {
+			if ( ( $rule['mode'] ?? 'show' ) !== 'show' ) return null;
+			$type = $rule['type'] ?? 'all';
+			if ( $type === 'id' && absint( $rule['value'] ?? 0 ) ) {
+				$tags[] = 'Po.' . absint( $rule['value'] );
+			} elseif ( $type === 'is_front_page' ) {
+				$tags[] = 'F';
+			} else {
+				return null;
+			}
+		}
+		return $tags ?: null;
+	}
+
+	private function purge_bar_pages( array $tag_sets ) {
+		$tags = [];
+		foreach ( $tag_sets as $set ) {
+			if ( $set === null ) {
+				$this->purge_pages();
+				return;
+			}
+			$tags = array_merge( $tags, $set );
+		}
+		foreach ( array_unique( $tags ) as $tag ) {
+			do_action( 'litespeed_purge', $tag );
+		}
+	}
+
+	private function is_live_bar( $post_id ) {
+		return get_post_type( $post_id ) === 'nc_notification'
+			&& get_post_status( $post_id ) === 'publish'
+			&& get_post_meta( $post_id, 'nc_show_as_topbar', true ) === '1';
+	}
+
+	public function remember_bar_state( $post_id ) {
+		if ( get_post_type( $post_id ) === 'nc_notification' ) {
+			$this->was_live_bar[ $post_id ] = $this->is_live_bar( $post_id );
+			$this->was_bar_tags[ $post_id ] = self::bar_cache_tags( $post_id );
+		}
+	}
+
+	public function maybe_purge_after_save( $post_id, $post ) {
+		if ( $post->post_type !== 'nc_notification' ) return;
+		if ( ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) || wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) ) return;
+		// Old and new placement both: a bar moved off a page must disappear from it too.
+		$sets = [];
+		if ( ! empty( $this->was_live_bar[ $post_id ] ) ) $sets[] = $this->was_bar_tags[ $post_id ] ?? null;
+		if ( $this->is_live_bar( $post_id ) ) $sets[] = self::bar_cache_tags( $post_id );
+		if ( $sets ) $this->purge_bar_pages( $sets );
+	}
+
+	public function maybe_purge_before_removal( $post_id ) {
+		if ( $this->is_live_bar( $post_id ) ) $this->purge_bar_pages( [ self::bar_cache_tags( $post_id ) ] );
+	}
+
+	public function purge_pages() {
+		static $done = false;
+		if ( $done ) return;
+		$done = true;
+		do_action( 'litespeed_purge_all' );
 	}
 	
 	/**
@@ -36,9 +120,6 @@ class NC_Settings {
 		delete_transient( 'nc_fluentform_ids' );
 		delete_transient( 'nc_gravityform_ids' );
 		update_option( 'nc_cache_version', time(), false );
-
-		// Purge LSCache — inline notifications are baked into cached HTML
-		do_action( 'litespeed_purge_all' );
 	}
 
 	/**

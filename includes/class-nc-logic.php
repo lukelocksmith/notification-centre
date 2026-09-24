@@ -9,9 +9,9 @@ class NC_Logic {
 	/**
 	 * Main function to get valid notifications for current context
 	 */
-	public static function get_valid_notifications( $context = [] ) {
-		// Context: ['post_id' => 123, 'url' => '.../checkout/', 'user_id' => 1]
-		
+	public static function get_valid_notifications( $context = [], $only_topbar = false ) {
+		// Context: ['post_id' => 123, 'url' => '.../checkout/', 'user_id' => 1, 'device' => 'mobile'|'desktop']
+
 		// Debug logging
 		if (get_option('nc_debug_mode') === '1') {
 			error_log('[NC Debug] get_valid_notifications called with context: ' . print_r($context, true));
@@ -37,6 +37,9 @@ class NC_Logic {
 
 		foreach ( $query->posts as $post ) {
 			$meta = get_post_meta( $post->ID );
+			// Server-rendered top bar only needs bar items; skipping the rest avoids
+			// rendering every popup body (and its form shortcodes) on each page build.
+			if ( $only_topbar && ( $meta['nc_show_as_topbar'][0] ?? '' ) !== '1' ) continue;
 			if ( self::is_valid( $post, $context, $meta ) ) {
 				$item = self::prepare_for_api( $post, $meta );
 				// PERF: compute the sort timestamp once here, not on every usort comparison.
@@ -66,6 +69,66 @@ class NC_Logic {
 
 		wp_reset_postdata();
 		return $valid;
+	}
+
+	/**
+	 * Seconds until the set of valid notifications for this context can change on its own
+	 * (schedule start/end, daily countdown cut-off or start, excluded-day midnight).
+	 * Caches holding a rendered result must not outlive this. Null = no time boundary.
+	 */
+	public static function seconds_until_change( $context = [], $only_topbar = false ) {
+		$query = new WP_Query( [
+			'post_type'              => 'nc_notification',
+			'post_status'            => 'publish',
+			'posts_per_page'         => 50,
+			'fields'                 => 'ids',
+			'no_found_rows'          => true,
+			'update_post_term_cache' => false,
+		] );
+		update_meta_cache( 'post', $query->posts );
+		$now  = strtotime( current_time( 'mysql' ) );
+		$next = null;
+		foreach ( $query->posts as $id ) {
+			$meta = get_post_meta( $id );
+			if ( $only_topbar && ( $meta['nc_show_as_topbar'][0] ?? '' ) !== '1' ) continue;
+			if ( ! self::check_page_rules( $id, $context, $meta ) ) continue;
+			foreach ( self::time_boundaries( $meta, $now ) as $t ) {
+				if ( $t > $now && ( $next === null || $t < $next ) ) $next = $t;
+			}
+		}
+		return $next === null ? null : max( 30, $next - $now );
+	}
+
+	private static function time_boundaries( $meta, $now ) {
+		$get   = function( $k ) use ( $meta ) { return isset( $meta[ $k ][0] ) ? maybe_unserialize( $meta[ $k ][0] ) : ''; };
+		$today = date( 'Y-m-d', $now );
+		$at    = function( $hm ) use ( $today, $now ) {
+			$t = strtotime( $today . ' ' . $hm );
+			return $t > $now ? $t : $t + DAY_IN_SECONDS;
+		};
+		$out = [];
+		foreach ( [ 'nc_active_from', 'nc_active_to' ] as $k ) {
+			if ( $get( $k ) ) $out[] = strtotime( $get( $k ) ) + ( $k === 'nc_active_to' ? 60 : 0 );
+		}
+		$excluded = $get( 'nc_excluded_days' );
+		if ( is_array( $excluded ) && $excluded ) $out[] = $at( '00:00' );
+		if ( $get( 'nc_countdown_enabled' ) ) {
+			$type = $get( 'nc_countdown_type' ) ?: 'date';
+			if ( $type === 'daily' ) {
+				if ( $get( 'nc_countdown_autohide' ) ) $out[] = $at( $get( 'nc_countdown_time' ) ?: '10:00' );
+				if ( $get( 'nc_countdown_start_time' ) ) $out[] = $at( $get( 'nc_countdown_start_time' ) );
+			} elseif ( $type === 'date' && $get( 'nc_countdown_autohide' ) && $get( 'nc_countdown_date' ) ) {
+				$out[] = strtotime( $get( 'nc_countdown_date' ) );
+			}
+		}
+		return array_filter( $out );
+	}
+
+	public static function is_customer( $user_id ) {
+		static $cache = [];
+		if ( ! $user_id || ! function_exists( 'wc_get_customer_order_count' ) ) return false;
+		if ( ! isset( $cache[ $user_id ] ) ) $cache[ $user_id ] = wc_get_customer_order_count( $user_id ) > 0;
+		return $cache[ $user_id ];
 	}
 
 	/**
@@ -121,7 +184,7 @@ class NC_Logic {
                 } elseif ( $type === 'daily' ) {
                     $target_time = $get('nc_countdown_time') ?: '10:00';
                     $current_hm = date( 'H:i', $now );
-                    if ( $current_hm > $target_time ) return false;
+                    if ( $current_hm >= $target_time ) return false;
                 }
             }
 
@@ -145,11 +208,17 @@ class NC_Logic {
 			$user = wp_get_current_user();
 			if ( ! in_array( 'administrator', (array) $user->roles, true ) ) return false;
 		}
+		// Customers: for guests the browser decides (customer cookie), so the shared cached
+		// response stays valid. A logged-in account is known here: no orders, no item.
+		if ( $audience === 'customers' && $user_id !== 0 && ! self::is_customer( $user_id ) ) return false;
 
 		// 2.5 Device Check
+		// The front end sends its viewport class ('d'), so a publicly cached response is
+		// keyed by device in the URL; User-Agent sniffing is only the fallback.
 		$device_target = $get('nc_device_target') ?: 'all';
-		if ( $device_target === 'mobile' && ! wp_is_mobile() ) return false;
-		if ( $device_target === 'desktop' && wp_is_mobile() ) return false;
+		$is_mobile = isset( $context['device'] ) ? $context['device'] === 'mobile' : wp_is_mobile();
+		if ( $device_target === 'mobile' && ! $is_mobile ) return false;
+		if ( $device_target === 'desktop' && $is_mobile ) return false;
 
         // 3. Page Rules Check
         if ( ! self::check_page_rules( $id, $context, $meta ) ) return false;
@@ -291,6 +360,15 @@ class NC_Logic {
 		$body = do_shortcode( wp_kses_post( $nc_description ) );
 	}
 
+	// Fluent Forms enqueues Google reCAPTCHA while rendering a form, but this body is
+	// rendered in a REST request where enqueued scripts are never printed, so the popup
+	// form failed on submit ("grecaptcha is not defined"). Hand the URL to the front end.
+	$scripts = [];
+	if ( strpos( $body, 'g-recaptcha' ) !== false ) {
+		$rc = wp_scripts()->registered['google-recaptcha'] ?? null;
+		if ( $rc && $rc->src ) $scripts[] = $rc->src;
+	}
+
 	return [
 		'id' => $post->ID,
 		'audience' => $get('nc_audience') ?: 'all',
@@ -299,6 +377,7 @@ class NC_Logic {
 		'title' => $is_raw ? '' : do_shortcode( $get('nc_title') ?: $post->post_title ),
 		'title_css' => $get('nc_title_custom_css_enabled') === '1' ? $get('nc_title_custom_css') : '',
 		'body' => $body,
+		'scripts' => $scripts,
 		// content_mode / raw_scripts drive the front-end renderer (main.js):
 		// raw → render body only, and re-execute <script> ONLY when raw_scripts=true
 		// (author had unfiltered_html; otherwise kses already removed scripts on save).
@@ -322,6 +401,8 @@ class NC_Logic {
                // can add a real window-width guard (main.js) against UA spoofing / mobile
                // emulation reporting a desktop-sized window as "mobile".
                'device_target' => $get('nc_device_target') ?: 'all',
+               'customers_only' => $get('nc_audience') === 'customers',
+               'rotation_group' => (string) $get('nc_rotation_group'),
                
                // Legacy Toast (keep for backward compatibility)
                'toast' => $get('nc_show_as_toast') === '1' || $get('nc_show_as_floating') === '1',

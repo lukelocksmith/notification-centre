@@ -398,9 +398,11 @@ class NC_Post_Type {
             case 'nc_audience':
                 $audience = get_post_meta( $post_id, 'nc_audience', true ) ?: 'all';
                 $labels = [
-                    'all'        => 'Wszyscy',
-                    'logged_in'  => 'Zalogowani',
-                    'logged_out' => 'Goście',
+                    'all'           => 'Wszyscy',
+                    'logged_in'     => 'Zalogowani',
+                    'guests'        => 'Goście',
+                    'administrator' => 'Administrator',
+                    'customers'     => 'Klienci',
                 ];
                 echo esc_html( $labels[ $audience ] ?? $audience );
                 break;

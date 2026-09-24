@@ -3,7 +3,7 @@
  * Plugin Name: Notification Centre
  * Plugin URI:  https://agencyjnie.pl
  * Description: Advanced on-site notification center with OneSignal integration.
- * Version:     1.9.3
+ * Version:     1.10.0
  * Author:      important.is
  * Text Domain: notification-centre
  */
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define Constants
-define( 'NC_VERSION', '1.9.3' );
+define( 'NC_VERSION', '1.10.0' );
 define( 'NC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -23,6 +23,10 @@ define( 'NC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 class Notification_Centre {
 
 	private static $instance = null;
+	private $fluent_config = null;
+	private $front_data = null;
+	private $ssr_topbar = null;
+	private $topbar_printed = false;
 
 	public static function get_instance() {
 		if ( null === self::$instance ) {
@@ -67,6 +71,11 @@ class Notification_Centre {
         
         // Render Top Bar at the beginning of body for proper positioning
         add_action( 'wp_body_open', [ $this, 'render_topbar' ] );
+        add_action( 'bricks_after_header', [ $this, 'render_topbar' ] );
+        add_action( 'wp_footer', [ $this, 'render_topbar' ], 5 );
+        add_filter( 'body_class', [ $this, 'topbar_body_class' ] );
+        add_action( 'wp_footer', [ $this, 'render_customer_flag_script' ], 99 );
+        add_action( 'wp_footer', [ $this, 'render_front_loader' ], 100 );
 
         // Recompute cached form-ID lists on save (moved off the frontend — see refresh_form_id_cache).
         // Must run on the GENERIC save_post at priority > 10: WP fires save_post_{type} BEFORE the
@@ -88,15 +97,12 @@ class Notification_Centre {
     public function enqueue_assets() {
         if ( $this->should_skip_frontend() ) return;
 
-        // Front-end assets (non-render-blocking CSS)
-		wp_enqueue_style( 'nc-style', NC_PLUGIN_URL . 'assets/css/style.css', [], NC_VERSION, 'print' );
-        // Switch media to 'all' on load so CSS applies without blocking render
-        add_filter( 'style_loader_tag', function( $html, $handle ) {
-            if ( $handle === 'nc-style' ) {
-                return str_replace( "media='print'", "media='print' onload=\"this.media='all'\"", $html );
-            }
-            return $html;
-        }, 10, 2 );
+        // style.css and main.js are NOT printed as tags: the loader in render_front_loader()
+        // fetches them on the visitor's first input, so page load (and PageSpeed, which never
+        // interacts) carries no NC code. Only a small inline style (CSS variables, and the
+        // top bar rules when the server printed a bar) is in the page.
+        wp_register_style( 'nc-inline', false, [], NC_VERSION );
+        wp_enqueue_style( 'nc-inline' );
 
         // Check for Fluent Forms in active notifications and enqueue necessary assets
         if ( function_exists( 'fluentFormMix' ) ) {
@@ -117,43 +123,43 @@ class Notification_Centre {
             }
 
             if ( ! empty( $form_ids ) ) {
-                // Enqueue Fluent Forms main scripts
-                wp_enqueue_style( 'fluent-form-styles', fluentFormMix( 'css/fluent-forms-public.css' ), [], FLUENTFORM_VERSION );
-                wp_enqueue_style( 'fluentform-public-default', fluentFormMix( 'css/fluentform-public-default.css' ), [], FLUENTFORM_VERSION );
-                wp_enqueue_script( 'fluent-form-submission', fluentFormMix( 'js/form-submission.js' ), [ 'jquery' ], FLUENTFORM_VERSION, true );
-
-                // Global fluentFormVars
-                if ( ! wp_script_is( 'fluent-form-submission', 'done' ) ) {
-                    $fluent_vars = [
-                        'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-                        'forms' => [],
-                        'step_text' => __( 'Step %activeStep% of %totalStep% - %stepTitle%', 'fluentform' ),
-                        'is_rtl' => is_rtl(),
-                        'date_i18n' => [],
-                        'pro_version' => defined( 'FLUENTFORMPRO_VERSION' ) ? FLUENTFORMPRO_VERSION : false,
-                        'fluentform_version' => FLUENTFORM_VERSION,
-                        'force_init' => false,
-                        'nonce' => wp_create_nonce(),
-                    ];
-                    wp_localize_script( 'fluent-form-submission', 'fluentFormVars', $fluent_vars );
-                }
-
-                // Add inline form-specific config for each discovered form
+                // Popups with a form show on a few pages and only after a trigger, so the
+                // Fluent Forms bundle is NOT enqueued here. main.js loads it from this config
+                // right before such a popup opens (loadFluentAssets).
+                $models = [];
                 foreach ( $form_ids as $form_id ) {
                     $form = wpFluent()->table( 'fluentform_forms' )->where( 'id', $form_id )->first();
                     if ( ! $form ) continue;
-
-                    $generic_var_name = 'fluent_form_model_' . $form_id;
-                    $form_vars = [
+                    $models[ (string) $form_id ] = [
                         'id' => $form_id,
                         'settings' => [ 'layout' => [] ],
                         'form_instance' => '',
                         'form_id_selector' => 'fluentform_' . $form_id,
                         'rules' => [],
                     ];
-
-                    $inline_script = 'window.' . $generic_var_name . ' = ' . wp_json_encode( $form_vars ) . ';';
-                    wp_add_inline_script( 'fluent-form-submission', $inline_script );
+                }
+                if ( $models ) {
+                    $ver = function ( $url ) { return add_query_arg( 'ver', FLUENTFORM_VERSION, $url ); };
+                    $this->fluent_config = [
+                        'css' => [
+                            $ver( fluentFormMix( 'css/fluent-forms-public.css' ) ),
+                            $ver( fluentFormMix( 'css/fluentform-public-default.css' ) ),
+                        ],
+                        'js' => $ver( fluentFormMix( 'js/form-submission.js' ) ),
+                        'jquery' => includes_url( 'js/jquery/jquery.min.js' ),
+                        'vars' => [
+                            'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+                            'forms' => [],
+                            'step_text' => __( 'Step %activeStep% of %totalStep% - %stepTitle%', 'fluentform' ),
+                            'is_rtl' => is_rtl(),
+                            'date_i18n' => [],
+                            'pro_version' => defined( 'FLUENTFORMPRO_VERSION' ) ? FLUENTFORMPRO_VERSION : false,
+                            'fluentform_version' => FLUENTFORM_VERSION,
+                            'force_init' => false,
+                            'nonce' => wp_create_nonce(),
+                        ],
+                        'models' => $models,
+                    ];
                 }
             }
         }
@@ -273,25 +279,26 @@ class Notification_Centre {
             --nc-countdown-value: {$nc_countdown_value};
             --nc-countdown-unit: {$nc_countdown_unit};
         }";
-        wp_add_inline_style( 'nc-style', $custom_css );
+        // Footer markup (drawer, overlay, toasts) has no layout until style.css arrives on the
+        // first input; hidden until then so it never shows up as bare text under the footer.
+        $custom_css .= "\nhtml:not(.nc-css) #nc-drawer,html:not(.nc-css) #nc-overlay,html:not(.nc-css) #nc-toast-container{display:none!important}";
+        // The server-rendered top bar must have its final size at first paint, while
+        // style.css loads non-blocking — so its rules go inline, only when a bar is printed.
+        if ( $this->get_ssr_topbar() ) {
+            $custom_css .= "\n" . file_get_contents( NC_PLUGIN_DIR . 'assets/css/topbar-critical.css' );
+        }
+        wp_add_inline_style( 'nc-inline', $custom_css );
         
         // Enqueue script with defer for better PageSpeed
-        wp_enqueue_script( 'nc-main', NC_PLUGIN_URL . 'assets/js/main.js', [], NC_VERSION, [
-            'in_footer' => true,
-            'strategy' => 'defer'
-        ] );
-
-        // NOTE: Notification data is intentionally NOT baked into the page HTML here.
-        // This page (including this inline script) is cached by LiteSpeed for days,
-        // while notification content/rules can change or expire in minutes. Baking
-        // notification data into the cached HTML froze stale/broken snapshots (e.g.
-        // a form render missing its assets) into the page cache for as long as the
-        // page cache lived. The frontend always fetches via AJAX instead (see
-        // fetchNotifications() in main.js), which hits the REST endpoint's own
-        // short-lived (5 min) cache — decoupled from the full-page cache lifetime.
+        // Data is not baked per notification: the page is cached by LiteSpeed while
+        // notifications change in minutes, so the front end fetches them from REST.
         $user_id = get_current_user_id();
 
-		wp_localize_script( 'nc-main', 'ncData', [
+		$this->front_data = [
+            'assets' => [
+                'js'  => add_query_arg( 'ver', NC_VERSION, NC_PLUGIN_URL . 'assets/js/main.js' ),
+                'css' => add_query_arg( 'ver', NC_VERSION, NC_PLUGIN_URL . 'assets/css/style.css' ),
+            ],
 			'root' => esc_url_raw( rest_url() ),
 			'version' => NC_VERSION,
 			'nonce' => wp_create_nonce( 'wp_rest' ),
@@ -327,7 +334,14 @@ class Notification_Centre {
             ],
             'userNotificationsEndpoint' => rest_url( 'nc/v1/user-notifications' ),
             'hasWooCommerce' => class_exists( 'WooCommerce' ),
-		] );
+            // Per-user Woo notifications exist only when enabled — skip the fetch otherwise.
+            'wooNotifications' => class_exists( 'WooCommerce' ) && get_option( 'nc_woo_enabled', '1' ) === '1',
+            'fluentForms' => $this->fluent_config,
+            'ssrTopbar' => (bool) $this->get_ssr_topbar(),
+            // Logged-in pages are never in the shared page cache, so this flag is safe here.
+            'isCustomer' => NC_Logic::is_customer( get_current_user_id() ),
+            'rotation' => self::rotation_limits(),
+		];
 	}
     
     /**
@@ -471,13 +485,209 @@ class Notification_Centre {
 	}
     
     /**
-     * Render Top Bar at the beginning of body
+     * Top bar items rendered into the page HTML, so the bar is in place at first paint
+     * instead of being injected by JS later and pushing the content down (CLS).
+     * Dismissible bars are included: the inline script next to the bar drops the ones this
+     * browser already closed (localStorage) before first paint. Device-split, customers-only
+     * and rotation bars are not: those are decided in the browser by main.js.
+     * Also caps the page-cache TTL at the next schedule/countdown boundary.
+     *
+     * @return array|false
+     */
+    public function get_ssr_topbar() {
+        if ( $this->ssr_topbar !== null ) return $this->ssr_topbar;
+        if ( ! did_action( 'wp' ) || is_admin() || wp_doing_ajax() || is_feed() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) return false;
+
+        $this->ssr_topbar = false;
+        if ( $this->should_skip_frontend() || ! empty( $_GET['nc_preview'] ) ) return false;
+        $options = $this->get_cached_options();
+        if ( $options['nc_disable_topbar'] === '1' ) return false;
+
+        $scheme  = is_ssl() ? 'https://' : 'http://';
+        $context = [
+            'url'     => esc_url_raw( $scheme . ( $_SERVER['HTTP_HOST'] ?? '' ) . ( $_SERVER['REQUEST_URI'] ?? '/' ) ),
+            'post_id' => is_singular() ? get_queried_object_id() : 0,
+            'user_id' => get_current_user_id(),
+        ];
+
+        $until = NC_Logic::seconds_until_change( $context, true );
+        if ( $until !== null ) {
+            do_action( 'litespeed_control_set_ttl', $until );
+        }
+
+        $items = array_values( array_filter(
+            NC_Logic::get_valid_notifications( $context, true ),
+            // Device split, "customers only" and rotation groups are decided in the browser,
+            // which a shared cached page can't do; those bars stay on the JS path.
+            function ( $n ) {
+                return ( $n['settings']['device_target'] ?? 'all' ) === 'all'
+                    && empty( $n['settings']['customers_only'] )
+                    && empty( $n['settings']['rotation_group'] );
+            }
+        ) );
+        if ( ! $items ) return false;
+        usort( $items, function ( $a, $b ) {
+            return ( $b['settings']['topbar_priority'] ?? 0 ) - ( $a['settings']['topbar_priority'] ?? 0 );
+        } );
+
+        $this->ssr_topbar = $items;
+        return $items;
+    }
+
+    private function ssr_topbar_below() {
+        $items = $this->get_ssr_topbar();
+        if ( ! $items ) return false;
+        foreach ( $items as $n ) {
+            if ( ( $n['settings']['topbar_position'] ?? 'above' ) === 'below' ) return true;
+        }
+        return false;
+    }
+
+    public function topbar_body_class( $classes ) {
+        if ( $this->get_ssr_topbar() ) $classes[] = 'nc-topbar-active';
+        return $classes;
+    }
+
+    /**
+     * Top Bar container. With a server-rendered bar placed "below" the header on Bricks,
+     * it is printed on bricks_after_header; wp_footer is the fallback so the container
+     * always exists exactly once.
      */
     public function render_topbar() {
-        if ( $this->should_skip_frontend() ) return;
-        ?>
-        <div id="nc-topbar" class="nc-topbar" role="banner" aria-label="Ogłoszenie" style="display:none;"></div>
-        <?php
+        if ( $this->topbar_printed || $this->should_skip_frontend() ) return;
+        $current = current_action();
+        if ( $current === 'wp_body_open' && $this->ssr_topbar_below() && defined( 'BRICKS_VERSION' ) ) return;
+        if ( $current === 'bricks_after_header' && ! $this->ssr_topbar_below() ) return;
+        // Footer is only the safety net for "skipped body_open, Bricks hook never fired";
+        // themes without wp_body_open keep their old behaviour (no container).
+        if ( $current === 'wp_footer' && ! did_action( 'wp_body_open' ) ) return;
+
+        $this->topbar_printed = true;
+        $items = $this->get_ssr_topbar();
+        if ( ! $items || $current === 'wp_footer' ) {
+            echo '<div id="nc-topbar" class="nc-topbar" role="banner" aria-label="Ogłoszenie" style="display:none;"></div>';
+            return;
+        }
+        echo $this->topbar_markup( $items );
+    }
+
+    private static function js_esc( $s ) {
+        return htmlspecialchars( (string) $s, ENT_QUOTES, 'UTF-8', true );
+    }
+
+    private static function js_safe_url( $u ) {
+        $u = trim( (string) $u );
+        return preg_match( '/^(https?:|\/|#|mailto:|tel:)/i', $u ) ? self::js_esc( $u ) : '#';
+    }
+
+    /**
+     * Same markup as renderTopBar() in main.js, which adopts it when the item ids match.
+     */
+    private function topbar_markup( $items ) {
+        $options = $this->get_cached_options();
+        $classes = [ 'nc-topbar' ];
+        if ( $options['nc_topbar_sticky'] === '1' ) $classes[] = 'nc-topbar-sticky';
+        $ids = [];
+        foreach ( $items as $n ) {
+            $ids[] = $n['id'];
+            if ( ( $n['settings']['topbar_style'] ?? '' ) === 'compact' ) $classes[] = 'nc-topbar-compact';
+            if ( ( $n['settings']['topbar_position'] ?? '' ) === 'below' ) $classes[] = 'nc-topbar-below-header';
+        }
+        $classes = array_unique( $classes );
+
+        $first = $items[0]['settings']['colors'] ?? [];
+        $style = 'display:flex;';
+        if ( ! empty( $first['bg'] ) ) {
+            $style .= 'background-color:' . self::js_esc( $first['bg'] ) . ';';
+            if ( ! empty( $first['text'] ) ) $style .= 'color:' . self::js_esc( $first['text'] ) . ';';
+        }
+
+        $html = '<div id="nc-topbar" class="' . esc_attr( implode( ' ', $classes ) ) . '" role="banner" aria-label="Ogłoszenie" data-ssr="' . esc_attr( implode( ',', $ids ) ) . '" style="' . $style . '">';
+        $html .= '<div class="nc-topbar-inner">';
+        if ( count( $items ) > 1 ) {
+            $html .= '<div class="nc-topbar-dots">';
+            foreach ( $items as $i => $n ) {
+                $html .= '<span class="nc-topbar-dot' . ( $i === 0 ? ' active' : '' ) . '" data-index="' . $i . '"></span>';
+            }
+            $html .= '</div>';
+        }
+        foreach ( $items as $i => $n ) {
+            $cs = $n['settings']['colors'] ?? [];
+            $item_style = ! empty( $cs['bg'] ) ? 'background-color:' . self::js_esc( $cs['bg'] ) . '; color:' . self::js_esc( $cs['text'] ?: '#fff' ) . ';' : '';
+            $dismiss = empty( $n['settings']['topbar_permanent'] )
+                ? ' data-rv="' . (int) ( $n['settings']['repeat_val'] ?? 0 ) . '" data-ru="' . esc_attr( $n['settings']['repeat_unit'] ?? 'days' ) . '"'
+                : ' data-perm="1"';
+            $html .= '<div class="nc-topbar-item ' . ( $i === 0 ? 'active' : '' ) . '" data-id="' . (int) $n['id'] . '"' . $dismiss . ' style="' . $item_style . '">';
+            $html .= '<span class="nc-topbar-title">' . self::js_esc( $n['title'] ) . '</span>';
+            if ( $n['body'] !== '' && $n['body'] !== null ) {
+                $html .= '<span class="nc-topbar-description">' . self::js_esc( $n['body'] ) . '</span>';
+            }
+            if ( ! empty( $n['settings']['countdown']['enabled'] ) ) {
+                $html .= $this->countdown_markup( $n['settings']['countdown'], $options );
+            }
+            if ( $n['cta_label'] && $n['cta_url'] ) {
+                $btn_style = ! empty( $cs['btn_bg'] ) ? ' style="background-color:' . self::js_esc( $cs['btn_bg'] ) . '; color:' . self::js_esc( $cs['btn_text'] ?: '#fff' ) . ';"' : '';
+                $target = ( $n['cta_target'] ?? '' ) === '_blank' ? ' target="_blank" rel="noopener noreferrer"' : ' target="_self"';
+                $html .= '<a href="' . self::js_safe_url( $n['cta_url'] ) . '" class="nc-topbar-btn"' . $btn_style . $target . '>' . self::js_esc( $n['cta_label'] ) . '</a>';
+            }
+            $html .= '</div>';
+        }
+        $all_permanent = true;
+        foreach ( $items as $n ) {
+            if ( empty( $n['settings']['topbar_permanent'] ) ) $all_permanent = false;
+        }
+        if ( ! $all_permanent ) {
+            $html .= '<button class="nc-topbar-close" title="Zamknij">&times;</button>';
+        }
+        $html .= '</div></div>';
+        // Runs at parse time, before first paint: fresh countdown digits even from a cached
+        // page, and a bar whose daily cut-off already passed never flashes up.
+        // It keeps ticking until main.js (loaded on first input) takes the bar over.
+        $html .= '<script data-no-optimize="1" data-no-defer="1">(function(){var b=document.getElementById("nc-topbar");if(!b)return;function p(n){return(n<10?"0":"")+n}'
+            // Same rule as isDismissed() in main.js: closed bars stay hidden for the repeat period, or for good.
+            . 'var ds={};try{ds=JSON.parse(localStorage.getItem("nc_topbar_dismissed")||"{}")||{}}catch(e){}var U={minutes:6e4,hours:36e5,days:864e5};'
+            . 'b.querySelectorAll(".nc-topbar-item:not([data-perm])").forEach(function(i){var id=i.getAttribute("data-id"),at=Array.isArray(ds)?(ds.indexOf(+id)>-1||ds.indexOf(id)>-1?Date.now():0):ds[id];if(!at)return;var rv=+i.getAttribute("data-rv");'
+            . 'if(!rv||Date.now()<at+rv*(U[i.getAttribute("data-ru")]||U.days)){i.remove();b.removeAttribute("data-ssr")}});'
+            . 'if(!b.querySelector(".nc-topbar-item:not([data-perm])")){var cb=b.querySelector(".nc-topbar-close");if(cb)cb.remove()}'
+            . 'function t(){if(window.ncMainReady){clearInterval(x);return}b.querySelectorAll(".nc-countdown").forEach(function(c){var d=+c.getAttribute("data-target")-Date.now();'
+            . 'if(d<=0&&c.getAttribute("data-autohide")==="1"){var i=c.closest(".nc-topbar-item");if(i)i.remove();return}'
+            . 'd=Math.max(0,Math.floor(d/1000));var h=c.querySelector(".nc-cd-hours"),m=c.querySelector(".nc-cd-minutes"),s=c.querySelector(".nc-cd-seconds");'
+            . 'if(h)h.textContent=p(Math.floor(d%86400/3600));if(m)m.textContent=p(Math.floor(d%3600/60));if(s)s.textContent=p(d%60)});'
+            . 'if(!b.querySelector(".nc-topbar-item")){b.style.display="none";b.removeAttribute("data-ssr");document.body.classList.remove("nc-topbar-active");clearInterval(x)}}'
+            . 'var x=b.querySelector(".nc-countdown")?setInterval(t,1000):0;t()})();</script>';
+        return $html;
+    }
+
+    private function countdown_markup( $cd, $options ) {
+        $tz  = wp_timezone();
+        $now = new DateTimeImmutable( 'now', $tz );
+        if ( $cd['type'] === 'daily' && $cd['time'] ) {
+            $target = DateTimeImmutable::createFromFormat( 'Y-m-d H:i', $now->format( 'Y-m-d' ) . ' ' . $cd['time'], $tz );
+            if ( $target && $target <= $now ) $target = $target->modify( '+1 day' );
+        } elseif ( $cd['type'] === 'date' && $cd['date'] ) {
+            $target = new DateTimeImmutable( $cd['date'], $tz );
+        } else {
+            return '';
+        }
+        if ( ! $target ) return '';
+
+        $ms   = $target->getTimestamp() * 1000;
+        $left = max( 0, $target->getTimestamp() - $now->getTimestamp() );
+        $units = ( $options['nc_countdown_show_units'] ?: '1' ) === '1';
+        $seg = function ( $cls, $val, $unit ) use ( $units ) {
+            return '<div class="nc-countdown-segment"><span class="nc-countdown-value ' . $cls . '">' . $val . '</span>' . ( $units ? '<span class="nc-countdown-unit">' . $unit . '</span>' : '' ) . '</div>';
+        };
+        $days = intdiv( $left, 86400 );
+        $html  = '<div class="nc-countdown' . ( $left <= 0 ? ' expired' : '' ) . '" data-target="' . $ms . '" data-type="' . esc_attr( $cd['type'] ) . '" data-time="' . esc_attr( $cd['time'] ?? '' ) . '" data-autohide="' . ( ! empty( $cd['autohide'] ) ? '1' : '' ) . '">';
+        $html .= '<div class="nc-countdown-timer">';
+        if ( $days > 0 ) {
+            $html .= $seg( 'nc-cd-days', $days, 'dni' ) . '<span class="nc-countdown-separator">:</span>';
+        }
+        $html .= $seg( 'nc-cd-hours', sprintf( '%02d', intdiv( $left % 86400, 3600 ) ), 'godz' ) . '<span class="nc-countdown-separator">:</span>';
+        $html .= $seg( 'nc-cd-minutes', sprintf( '%02d', intdiv( $left % 3600, 60 ) ), 'min' ) . '<span class="nc-countdown-separator">:</span>';
+        $html .= $seg( 'nc-cd-seconds', sprintf( '%02d', $left % 60 ), 'sek' );
+        $html .= '</div></div>';
+        return $html;
     }
 
     /**
@@ -500,6 +710,73 @@ class Notification_Centre {
                 $rate_like
             )
         );
+    }
+
+    /**
+     * ncData plus a ~0.5 KB loader. The loader injects style.css and main.js on the first
+     * mousemove / pointer / touch / key / wheel / scroll, and records the first input that
+     * ends LCP (window.ncFirstInput) so main.js knows it already happened. A click on the
+     * bell before main.js is ready is replayed once it is.
+     */
+    public function render_front_loader() {
+        if ( ! $this->front_data || $this->should_skip_frontend() ) return;
+        $json = wp_json_encode( $this->front_data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP );
+        ?>
+<script id="nc-data" data-no-optimize="1" data-no-defer="1" data-cfasync="false">var ncData=<?php echo $json; ?>;</script>
+<script id="nc-loader" data-no-optimize="1" data-no-defer="1" data-cfasync="false">(function(w,d){var L=['pointermove','mousemove','pointerdown','touchstart','keydown','wheel','scroll'],I=['pointerdown','touchstart','keydown','wheel'],o={capture:true,passive:true},done=false;
+function load(){if(done)return;done=true;L.forEach(function(t){w.removeEventListener(t,load,o)});var a=w.ncData.assets,l=d.createElement('link');l.rel='stylesheet';l.href=a.css;l.onload=function(){d.documentElement.classList.add('nc-css')};d.head.appendChild(l);var s=d.createElement('script');s.src=a.js;s.async=true;d.body.appendChild(s)}
+function input(){if(!w.ncFirstInput)w.ncFirstInput=Date.now();I.forEach(function(t){w.removeEventListener(t,input,o)})}
+I.forEach(function(t){w.addEventListener(t,input,o)});L.forEach(function(t){w.addEventListener(t,load,o)});
+d.addEventListener('click',function(e){if(!w.ncMainReady&&e.target.closest&&e.target.closest('#nc-bell-container')){w.ncPendingBell=true;e.preventDefault()}},true)})(window,document);</script>
+        <?php
+    }
+
+    /**
+     * Shared limit of a rotation group: at most one of its notifications is shown per
+     * page, they take turns, and the group as a whole respects this cap.
+     */
+    public static function rotation_limits() {
+        return apply_filters( 'nc_rotation_limits', [ 'minHours' => 24, 'maxShows' => 3, 'windowDays' => 7 ] );
+    }
+
+    private function customer_audience_used() {
+        $used = get_option( 'nc_customer_audience_used', null );
+        if ( $used === null ) {
+            $used = $this->scan_customer_audience();
+            update_option( 'nc_customer_audience_used', $used, false );
+        }
+        return $used === '1';
+    }
+
+    private function scan_customer_audience() {
+        $q = new WP_Query( [
+            'post_type' => 'nc_notification', 'post_status' => 'publish', 'posts_per_page' => 1,
+            'fields' => 'ids', 'no_found_rows' => true,
+            'meta_query' => [ [ 'key' => 'nc_audience', 'value' => 'customers' ] ],
+        ] );
+        return $q->posts ? '1' : '0';
+    }
+
+    /**
+     * Customer marker for the "customers only" audience: cookie nc_customer=1 for a year,
+     * set on the order-received page and for logged-in customers, and only with consent
+     * (Functional or Marketing) in the GetTerms banner; removed when consent is withdrawn.
+     * Without a known consent record nothing is set. The removal-only variant is static,
+     * so it is safe on publicly cached pages.
+     */
+    public function render_customer_flag_script() {
+        if ( $this->should_skip_frontend() || ! $this->customer_audience_used() ) return;
+        $mark = ( function_exists( 'is_order_received_page' ) && is_order_received_page() )
+            || NC_Logic::is_customer( get_current_user_id() );
+        ?>
+<script id="nc-customer-flag">(function(mark){var N='nc_customer',L='wdf_klient';
+function consent(){try{var c=JSON.parse(localStorage.getItem('getterms_cookie_consent')||'null');if(!c||!c.cookie_preferences)return null;var p=c.cookie_preferences;return !!(p.Functional||p.Marketing)}catch(e){return null}}
+function has(n){return document.cookie.indexOf(n+'=1')!==-1}
+function del(n){document.cookie=n+'=; max-age=0; path=/; SameSite=Lax; Secure'}
+function run(){var ok=consent();if(ok===false){if(has(N))del(N);if(has(L))del(L);return true}
+if(ok===true&&mark){if(!has(N))document.cookie=N+'=1; max-age=31536000; path=/; SameSite=Lax; Secure';return true}return false}
+if(run()||!mark)return;var n=0,t=setInterval(function(){if(run()||++n>300)clearInterval(t)},2000)})(<?php echo $mark ? 'true' : 'false'; ?>);</script>
+        <?php
     }
 
     /**
@@ -572,6 +849,8 @@ class Notification_Centre {
             '/\[gravityforms?\s+[^\]]*id=["\']?(\d+)["\']?[^\]]*\]/i'
         ) ) ) );
         update_option( 'nc_gravityform_ids', $gravity, false );
+
+        update_option( 'nc_customer_audience_used', $this->scan_customer_audience(), false );
 
         // Drop any stale short-lived transient fallbacks so they can't shadow the fresh options.
         delete_transient( 'nc_fluentform_ids' );
