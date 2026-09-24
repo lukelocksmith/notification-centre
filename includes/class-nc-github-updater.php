@@ -261,9 +261,16 @@ class NC_GitHub_Updater {
     }
 }
 
-// Inicjalizacja + pole w ustawieniach
+// The updater must also run where WordPress checks for updates in the background:
+// WP-Cron (automatic updates) and WP-CLI (`wp plugin update`), not only in wp-admin.
+add_action( 'init', function() {
+    if ( is_admin() || wp_doing_cron() || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+        new NC_GitHub_Updater();
+    }
+} );
+
+// Pole w ustawieniach
 add_action( 'admin_init', function() {
-    new NC_GitHub_Updater();
 
     // Dodaj pole GitHub Token do ustawień NC
     register_setting( 'nc_settings', 'nc_github_token', 'sanitize_text_field' );
@@ -287,8 +294,8 @@ add_action( 'admin_init', function() {
             <input type="password" name="nc_github_token" value="<?php echo esc_attr( $masked ); ?>"
                    class="regular-text" placeholder="ghp_..." autocomplete="off" />
             <p class="description">
-                Wymagany dla prywatnych repozytoriów.
-                <a href="https://github.com/settings/tokens/new?scopes=repo&description=Notification+Centre+Updater" target="_blank">Utwórz token</a>
+                Wymagany dla prywatnych repozytoriów. Użyj tokena „fine-grained” z dostępem tylko do repozytorium wtyczki i uprawnieniem <em>Contents: Read-only</em>.
+                <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Utwórz token</a>
                 <br><strong>Aktualna wersja:</strong> <?php echo esc_html( NC_VERSION ); ?>
             </p>
             <?php

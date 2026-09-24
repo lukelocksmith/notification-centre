@@ -58,6 +58,10 @@ class NC_Post_Type {
 			'query_var'          => false,
 			'rewrite'            => false,
 			'capability_type'    => 'post',
+			// A notification is shown to every visitor (and raw mode allows custom CSS), so
+			// creating and editing them is an administrator task by default. Every
+			// primitive cap of the CPT maps to one filterable capability.
+			'capabilities'       => self::cpt_capabilities(),
 			'has_archive'        => false,
 			'hierarchical'       => false,
 			'menu_position'      => 30,
@@ -127,14 +131,28 @@ class NC_Post_Type {
     /**
      * Capability required to manage notifications (duplicate, etc.).
      *
-     * SEC-W1 (defense-in-depth): defaults to 'edit_posts' so it does NOT change who
-     * can manage notifications today. Site owners who want to restrict the CPT to
-     * admins can filter this to e.g. 'manage_options':
+     * Defaults to 'manage_options' (administrators) since 1.10.3. Sites where editors
+     * manage notifications can widen it:
      *
-     *   add_filter( 'nc_manage_capability', fn() => 'manage_options' );
+     *   add_filter( 'nc_manage_capability', function () { return 'edit_others_posts'; } );
      */
     private function get_manage_capability() {
-        return apply_filters( 'nc_manage_capability', 'edit_posts' );
+        return self::manage_capability();
+    }
+
+    public static function manage_capability() {
+        return apply_filters( 'nc_manage_capability', 'manage_options' );
+    }
+
+    private static function cpt_capabilities() {
+        $cap  = self::manage_capability();
+        $caps = [];
+        foreach ( [ 'edit_posts', 'edit_others_posts', 'edit_private_posts', 'edit_published_posts',
+                    'publish_posts', 'read_private_posts', 'delete_posts', 'delete_private_posts',
+                    'delete_published_posts', 'delete_others_posts', 'create_posts' ] as $primitive ) {
+            $caps[ $primitive ] = $cap;
+        }
+        return $caps;
     }
 
     /**
