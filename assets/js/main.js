@@ -218,6 +218,7 @@
     // Priority: center (popup) > top positions > bottom positions
     let floatingQueue = []; // Single global queue
     let activeFloatingId = null; // Currently shown notification ID
+    let lastFocusBeforePopup = null;
 
     // Unified dismissal - syncs across ALL stores (sidebar, floating, topbar)
     function dismissEverywhere(id) {
@@ -726,6 +727,15 @@
             const g = n.settings && n.settings.rotation_group;
             if (g) (groups[g] = groups[g] || []).push(n);
         });
+        // Only members that could actually be shown now take part in the draw: a closed,
+        // capped or already-shown one would otherwise win and block the whole group.
+        const canShow = n => {
+            const s = n.settings || {};
+            if (countdownCutOffPassed(n) || !matchesDeviceWidth(s)) return false;
+            if (s.topbar) return !isDismissed(n.id, getTopBarDismissed(), s.repeat_val, s.repeat_unit);
+            return !isDismissed(n.id, dismissedToastIds, s.repeat_val, s.repeat_unit) &&
+                !checkImpressionCap(n) && !shownSessionIds.includes(n.id);
+        };
         const drop = new Set();
         Object.keys(groups).forEach(g => {
             const members = groups[g];
@@ -737,10 +747,11 @@
                 last[n.id] = ts.length ? Math.max(...ts) : 0;
             });
             const blocked = all.length >= maxShows || (all.length > 0 && now - Math.max(...all) < gapMs);
+            const eligible = members.filter(canShow);
             let pick = null;
-            if (!blocked) {
-                const oldest = Math.min(...members.map(n => last[n.id]));
-                const cands = members.filter(n => last[n.id] === oldest);
+            if (!blocked && eligible.length) {
+                const oldest = Math.min(...eligible.map(n => last[n.id]));
+                const cands = eligible.filter(n => last[n.id] === oldest);
                 pick = cands[Math.floor(Math.random() * cands.length)];
             }
             members.forEach(n => { if (n !== pick) drop.add(n.id); });
@@ -847,6 +858,8 @@
     }
 
     function renderList() {
+        // No bell on the page = no drawer in the HTML (see render_drawer_in_footer).
+        if (!listContainer) return;
         listContainer.innerHTML = '';
 
         // Filter logic with repeat check
@@ -1438,7 +1451,19 @@
         const el = document.createElement('div');
         el.className = `nc-floating nc-pos-${pos.replace('_', '-')}`;
         el.dataset.id = n.id;
-        el.setAttribute('role', 'alert');
+        // Center popup covers the page: a modal dialog (APG). Corner toasts are polite
+        // status messages, so they don't interrupt what a screen reader is reading.
+        // A hidden title is often an internal admin name: don't read it out, use the image alt.
+        const visibleTitle = n.settings.hide_title ? '' : (n.title || '').replace(/<[^>]*>/g, '').trim();
+        const dialogLabel = visibleTitle || n.image_alt || 'Powiadomienie';
+        if (isCenter) {
+            el.setAttribute('role', 'dialog');
+            el.setAttribute('aria-modal', 'true');
+            el.setAttribute('aria-label', dialogLabel);
+        } else {
+            el.setAttribute('role', 'status');
+            el.setAttribute('aria-label', dialogLabel);
+        }
         // Floating always dismissible
 
         // Apply width
@@ -1472,7 +1497,8 @@
         const effectiveTitle = n.settings.hide_title ? '' : n.title;
         const hasContent = !!(effectiveTitle || n.body || n.cta_label);
         // image_url is a WordPress attachment URL generated server-side via wp_get_attachment_image_url() — safe to use in src
-        const floatingImageTag = n.image_url ? `<img src="${n.image_url}" alt="">` : '';
+        // Image-only notification: the image is the link, so it needs a name (WCAG F89).
+        const floatingImageTag = n.image_url ? `<img src="${n.image_url}" alt="${hasContent ? '' : esc(n.image_alt || dialogLabel)}">` : '';
         const floatingImageInner = (!hasContent && n.cta_url)
             ? `<a href="${safeUrl(n.cta_url)}" class="nc-image-link"${ctaTargetAttrs(n)}>${floatingImageTag}</a>`
             : floatingImageTag;
@@ -1505,7 +1531,7 @@
                     ${n.cta_label ? `<a href="${safeUrl(n.cta_url)}" class="nc-floating-btn" style="${btnStyle}"${ctaTargetAttrs(n)}>${esc(n.cta_label)}</a>` : ''}
                 </div>
             </div>` : ''}
-            <button class="nc-floating-close">&times;</button>
+            <button class="nc-floating-close" type="button" aria-label="Zamknij">&times;</button>
         `;
 
         // Wstawiamy HTML (inline scripts nie będą wykonane przez innerHTML)
@@ -1513,7 +1539,7 @@
             // Body only — no icon/image/title/CTA. Close button kept so the
             // floating card stays dismissible. .nc-raw-content strips card padding.
             el.classList.add('nc-raw-content');
-            el.innerHTML = `<div class="nc-floating-body nc-raw-body">${n.body}</div><button class="nc-floating-close">&times;</button>`;
+            el.innerHTML = `<div class="nc-floating-body nc-raw-body">${n.body}</div><button class="nc-floating-close" type="button" aria-label="Zamknij">&times;</button>`;
         } else {
             el.innerHTML = floatingHTML;
         }
@@ -1542,10 +1568,26 @@
         }
 
         // Close event
-        el.querySelector('.nc-floating-close').addEventListener('click', (e) => {
+        const closeBtn = el.querySelector('.nc-floating-close');
+        closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             closeFloating(n.id, isCenter);
         });
+
+        // Modal focus: move in, keep Tab inside, give it back on close (APG dialog pattern).
+        if (isCenter) {
+            lastFocusBeforePopup = document.activeElement;
+            try { closeBtn.focus({ preventScroll: true }); } catch (e) { closeBtn.focus(); }
+            el.addEventListener('keydown', (e) => {
+                if (e.key !== 'Tab') return;
+                const f = [...el.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])')]
+                    .filter(x => x.offsetWidth || x.offsetHeight);
+                if (!f.length) return;
+                const first = f[0], lastEl = f[f.length - 1];
+                if (e.shiftKey && document.activeElement === first) { e.preventDefault(); lastEl.focus(); }
+                else if (!e.shiftKey && document.activeElement === lastEl) { e.preventDefault(); first.focus(); }
+            });
+        }
 
         // Prevent clicks inside the popup from propagating to the overlay (which triggers close)
         el.addEventListener('click', (e) => {
@@ -1582,6 +1624,11 @@
             if (overlay) {
                 overlay.style.animation = 'ncFadeOut 0.3s forwards';
                 setTimeout(() => overlay.remove(), 300);
+            }
+            const back = lastFocusBeforePopup;
+            lastFocusBeforePopup = null;
+            if (back && back !== document.body && document.contains(back) && typeof back.focus === 'function') {
+                try { back.focus({ preventScroll: true }); } catch (e) { /* element gone */ }
             }
         } else {
             const el = document.querySelector(`.nc-floating[data-id="${id}"]`);
@@ -1635,7 +1682,7 @@
 
     function checkListeners() {
         if (ncData.displayMode !== 'dropdown') return;
-        const drawerOpen = drawer.style.display === 'block';
+        const drawerOpen = !!drawer && drawer.style.display === 'block';
 
         if (drawerOpen || activeToastCount > 0) {
             updateDropdownPosition();
@@ -1656,6 +1703,7 @@
 
     function toggleDrawer(e) {
         if (e && e.preventDefault) e.preventDefault();
+        if (!drawer || !overlay) return;
 
         // Check Display Mode
         const mode = ncData.displayMode || 'drawer';
@@ -1857,7 +1905,7 @@
         const allPermanent = topBarItems.every(n => !!n.settings.topbar_permanent);
 
         if (!allPermanent) {
-            html += '<button class="nc-topbar-close" title="Zamknij">&times;</button>';
+            html += '<button class="nc-topbar-close" type="button" title="Zamknij" aria-label="Zamknij">&times;</button>';
         }
 
         html += '</div>';
@@ -2127,7 +2175,7 @@
                         renderTopBar();
                     } else if (floating) {
                         el.remove();
-                        closeFloating(floating.dataset.id, !!floating.closest('.nc-pos-center-overlay'));
+                        closeFloating(Number(floating.dataset.id) || floating.dataset.id, !!floating.closest('.nc-pos-center-overlay'));
                     } else {
                         const notifEl = el.closest('.nc-item, .nc-notification');
                         if (notifEl) notifEl.remove(); else el.remove();

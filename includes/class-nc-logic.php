@@ -390,6 +390,8 @@ class NC_Logic {
            'cta_target' => $get('nc_cta_target') ?: '_self',
            'icon' => $is_raw ? '' : $get('nc_icon'),
            'image_url' => $is_raw ? '' : ( ( $img_id = (int) $get('nc_image_id') ) ? ( wp_get_attachment_image_url( $img_id, 'large' ) ?: '' ) : '' ),
+           // Alt text from the media library; the front falls back to the title when empty.
+           'image_alt' => ( ! $is_raw && ( $img_id = (int) $get('nc_image_id') ) ) ? (string) get_post_meta( $img_id, '_wp_attachment_image_alt', true ) : '',
            'type' => 'info',
            'date' => get_the_date( 'Y-m-d H:i', $post ),
            'settings' => [
