@@ -181,6 +181,11 @@ class NC_Rest_Api {
             'post_id' => absint( $request->get_param('pid') ?: 0 ),
             'user_id' => $user_id
         ];
+        // pid comes from a public URL: only a published post counts, so random ids from
+        // bots can't create cache entries (transients) of their own.
+        if ( $context['post_id'] && get_post_status( $context['post_id'] ) !== 'publish' ) {
+            $context['post_id'] = 0;
+        }
         $device_param = $request->get_param( 'd' );
         if ( $device_param === 'mobile' || $device_param === 'desktop' ) {
             $context['device'] = $device_param;
@@ -219,13 +224,18 @@ class NC_Rest_Api {
         // which must not be edge-cached: LiteSpeed does not vary this site by device.
         // With 'd' the device is part of the URL, so the public cache is safe and every
         // page view no longer boots WordPress just to read the same list.
+        $response = rest_ensure_response( $notifications );
         if ( $user_id === 0 && ! $is_preview && isset( $context['device'] ) ) {
             do_action( 'litespeed_control_set_ttl', $ttl );
+            // Also for browsers and non-LiteSpeed hosts: the URL carries v and d, and $ttl
+            // never crosses the next schedule boundary, so a short public cache is safe.
+            $response->header( 'Cache-Control', 'public, max-age=' . (int) $ttl );
         } else {
             do_action( 'litespeed_control_set_nocache', 'nc: per-user or device-sniffed response' );
             header( 'X-LiteSpeed-Cache-Control: no-cache' );
+            $response->header( 'Cache-Control', 'private, no-store' );
         }
 
-		return rest_ensure_response( $notifications );
+		return $response;
 	}
 }

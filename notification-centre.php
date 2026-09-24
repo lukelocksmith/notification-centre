@@ -3,8 +3,10 @@
  * Plugin Name: Notification Centre
  * Plugin URI:  https://agencyjnie.pl
  * Description: Advanced on-site notification center with OneSignal integration.
- * Version:     1.10.1
+ * Version:     1.10.2
  * Author:      important.is
+ * Requires at least: 5.8
+ * Requires PHP: 7.4
  * Text Domain: notification-centre
  */
 
@@ -13,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define Constants
-define( 'NC_VERSION', '1.10.1' );
+define( 'NC_VERSION', '1.10.2' );
 define( 'NC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -782,7 +784,8 @@ d.addEventListener('click',function(e){if(!w.ncMainReady&&e.target.closest&&e.ta
     /**
      * Customer marker for the "customers only" audience: cookie nc_customer=1 for a year,
      * set on the order-received page and for logged-in customers, and only with consent
-     * (Functional or Marketing) in the GetTerms banner; removed when consent is withdrawn.
+     * (Marketing: the marker exists to target promotions) in the GetTerms banner; removed
+     * when that consent is withdrawn.
      * Without a known consent record nothing is set. The removal-only variant is static,
      * so it is safe on publicly cached pages.
      */
@@ -792,7 +795,7 @@ d.addEventListener('click',function(e){if(!w.ncMainReady&&e.target.closest&&e.ta
             || NC_Logic::is_customer( get_current_user_id() );
         ?>
 <script id="nc-customer-flag">(function(mark){var N='nc_customer',L='wdf_klient';
-function consent(){try{var c=JSON.parse(localStorage.getItem('getterms_cookie_consent')||'null');if(!c||!c.cookie_preferences)return null;var p=c.cookie_preferences;return !!(p.Functional||p.Marketing)}catch(e){return null}}
+function consent(){try{var c=JSON.parse(localStorage.getItem('getterms_cookie_consent')||'null');if(!c||!c.cookie_preferences)return null;var p=c.cookie_preferences;return !!p.Marketing}catch(e){return null}}
 function has(n){return document.cookie.indexOf(n+'=1')!==-1}
 function del(n){document.cookie=n+'=; max-age=0; path=/; SameSite=Lax; Secure'}
 function run(){var ok=consent();if(ok===false){if(has(N))del(N);if(has(L))del(L);return true}
@@ -909,6 +912,13 @@ register_activation_hook( __FILE__, [ 'NC_Woo_Notifications', 'create_table' ] )
 // Register all cron schedules on activation, plus an admin-only fallback for
 // installs that were already active before scheduling moved out of the request path.
 register_activation_hook( __FILE__, [ 'Notification_Centre', 'schedule_events' ] );
+
+// Deactivated plugin: its cron jobs must not keep firing without handlers.
+register_deactivation_hook( __FILE__, function () {
+	foreach ( [ 'nc_hourly_cache_purge', 'nc_cleanup_expired_transients', 'nc_cleanup_old_events', 'nc_abandoned_cart_check', 'nc_user_notifications_cleanup' ] as $hook ) {
+		wp_clear_scheduled_hook( $hook );
+	}
+} );
 add_action( 'admin_init', [ 'Notification_Centre', 'schedule_events' ] );
 
 // Hourly: bump the cache version so time-based notifications expire. Bumping

@@ -374,7 +374,7 @@ class NC_Metaboxes {
                     </select>
                 </p>
                 <p class="description">
-                    „Tylko klienci”: zalogowani z co najmniej jednym zamówieniem albo przeglądarki oznaczone po zakupie (ciasteczko <code>nc_customer</code>, ustawiane tylko po zgodzie w banerze cookies). Rozstrzyga przeglądarka, więc strona może zostać w cache.
+                    „Tylko klienci”: zalogowani z co najmniej jednym zamówieniem albo przeglądarki oznaczone po zakupie (ciasteczko <code>nc_customer</code>, ustawiane tylko po zgodzie marketingowej w banerze cookies). Rozstrzyga przeglądarka, więc strona może zostać w cache.
                 </p>
                 <p>
                     <label class="nc-label">Urządzenie</label>
