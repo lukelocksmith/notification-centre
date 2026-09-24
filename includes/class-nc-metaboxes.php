@@ -370,7 +370,11 @@ class NC_Metaboxes {
                         <option value="all" <?php selected($audience, 'all'); ?>>Wszyscy</option>
                         <option value="guests" <?php selected($audience, 'guests'); ?>>Tylko goście</option>
                         <option value="administrator" <?php selected($audience, 'administrator'); ?>>Tylko administrator</option>
+                        <option value="customers" <?php selected($audience, 'customers'); ?>>Tylko klienci (z zamówieniem)</option>
                     </select>
+                </p>
+                <p class="description">
+                    „Tylko klienci”: zalogowani z co najmniej jednym zamówieniem albo przeglądarki oznaczone po zakupie (ciasteczko <code>nc_customer</code>, ustawiane tylko po zgodzie w banerze cookies). Rozstrzyga przeglądarka, więc strona może zostać w cache.
                 </p>
                 <p>
                     <label class="nc-label">Urządzenie</label>
@@ -637,6 +641,13 @@ class NC_Metaboxes {
                         w oknie
                         <input type="number" name="nc_cap_window_days" value="<?php echo esc_attr($cap_window_days); ?>" style="width: 70px;" min="1"> dni
                     </p>
+                    <p>
+                        <label class="nc-label" style="width:auto; margin-right:10px;">Grupa rotacyjna:</label>
+                        <input type="text" name="nc_rotation_group" value="<?php echo esc_attr( get_post_meta( $post->ID, 'nc_rotation_group', true ) ); ?>" style="width: 180px;" placeholder="np. promo-center">
+                    </p>
+                    <p class="description">
+                        Powiadomienia z tą samą nazwą grupy nie pokazują się jedno po drugim: z grupy wyświetla się najwyżej jedno, na zmianę, ze wspólnym limitem <?php $rl = Notification_Centre::rotation_limits(); echo (int) $rl['maxShows']; ?> wyświetleń na <?php echo (int) $rl['windowDays']; ?> dni i przerwą <?php echo (int) $rl['minHours']; ?> godz.
+                    </p>
                     <p class="description">
                         Działa niezależnie od pola "Częstotliwość" powyżej — liczy realne wyświetlenia (nie tylko zamknięcia), więc pilnuje maksymalnej liczby pokazań nawet jeśli user nigdy nie kliknie X.
                     </p>
@@ -873,7 +884,8 @@ class NC_Metaboxes {
             'nc_repeat_value', 'nc_repeat_unit',
             'nc_cap_min_hours', 'nc_cap_max_shows', 'nc_cap_window_days',
             'nc_countdown_type', 'nc_countdown_date', 'nc_countdown_time', 'nc_countdown_label', 'nc_countdown_start_time',
-            'nc_topbar_position', 'nc_topbar_style', 'nc_topbar_priority'
+            'nc_topbar_position', 'nc_topbar_style', 'nc_topbar_priority',
+            'nc_rotation_group'
         ];
         
         foreach($fields as $field) {

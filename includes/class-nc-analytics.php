@@ -51,21 +51,14 @@ class NC_Analytics {
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'handle_event' ],
 			'permission_callback' => '__return_true',
+			// Either a single event (legacy main.js) or { events: [...] } batched per page view.
 			'args'                => [
-				'notification_id' => [
-					'required'          => true,
-					'validate_callback' => function( $value ) {
-						return is_numeric( $value ) && $value > 0;
-					},
-					'sanitize_callback' => 'absint',
+				'events' => [
+					'required' => false,
+					'type'     => 'array',
 				],
-				'event_type' => [
-					'required'          => true,
-					'validate_callback' => function( $value ) {
-						return in_array( $value, self::ALLOWED_EVENTS, true );
-					},
-					'sanitize_callback' => 'sanitize_text_field',
-				],
+				'notification_id' => [ 'required' => false ],
+				'event_type'      => [ 'required' => false ],
 				'page_url' => [
 					'required'          => false,
 					'sanitize_callback' => 'esc_url_raw',
@@ -74,10 +67,41 @@ class NC_Analytics {
 		] );
 	}
 
+	const MAX_BATCH = 20;
+
+	private function normalize_events( $request ) {
+		$raw = $request->get_param( 'events' );
+		if ( ! is_array( $raw ) ) {
+			$raw = [ [
+				'notification_id' => $request->get_param( 'notification_id' ),
+				'event_type'      => $request->get_param( 'event_type' ),
+				'page_url'        => $request->get_param( 'page_url' ),
+			] ];
+		}
+		$events = [];
+		foreach ( array_slice( $raw, 0, self::MAX_BATCH ) as $e ) {
+			if ( ! is_array( $e ) ) continue;
+			$id   = $e['notification_id'] ?? 0;
+			$type = $e['event_type'] ?? '';
+			if ( ! is_numeric( $id ) || $id <= 0 || ! in_array( $type, self::ALLOWED_EVENTS, true ) ) continue;
+			$events[] = [
+				'notification_id' => absint( $id ),
+				'event_type'      => $type,
+				'page_url'        => esc_url_raw( (string) ( $e['page_url'] ?? '' ) ),
+			];
+		}
+		return $events;
+	}
+
 	/**
 	 * Handle incoming event from frontend.
 	 */
 	public function handle_event( $request ) {
+		$events = $this->normalize_events( $request );
+		if ( ! $events ) {
+			return new WP_Error( 'invalid_event', 'No valid events', [ 'status' => 400 ] );
+		}
+
 		// Rate limit: max 100 events per minute per IP
 		$ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 		$rate_key = 'nc_rate_' . md5( $ip );
@@ -88,36 +112,38 @@ class NC_Analytics {
 			return new WP_Error( 'rate_limited', 'Too many requests', [ 'status' => 429 ] );
 		}
 
+		$new_count = $count + count( $events );
 		// Set the TTL only when the counter is first created so the 60s window is a
 		// fixed sliding window, not reset on every event (which would let a steady
 		// stream of requests keep the transient — and its expiry — alive forever).
 		if ( false === $raw ) {
-			set_transient( $rate_key, 1, MINUTE_IN_SECONDS );
+			set_transient( $rate_key, $new_count, MINUTE_IN_SECONDS );
 		} elseif ( wp_using_ext_object_cache() ) {
 			// Object cache has no separate timeout row to preserve — re-set is the only option.
-			set_transient( $rate_key, $count + 1, MINUTE_IN_SECONDS );
+			set_transient( $rate_key, $new_count, MINUTE_IN_SECONDS );
 		} else {
 			// DB transient: bump the value directly, leaving _transient_timeout_* untouched.
-			update_option( '_transient_' . $rate_key, $count + 1, false );
+			update_option( '_transient_' . $rate_key, $new_count, false );
 		}
 
-		$notification_id = $request->get_param( 'notification_id' );
-		$event_type      = $request->get_param( 'event_type' );
-		$page_url        = $request->get_param( 'page_url' ) ?: '';
-		$user_id         = get_current_user_id();
+		$user_id    = get_current_user_id();
+		$session_id = $_COOKIE['nc_session'] ?? wp_generate_uuid4();
+		$stored     = 0;
 
-		// Verify notification exists and is published
-		$post = get_post( $notification_id );
-		if ( ! $post || $post->post_type !== 'nc_notification' || $post->post_status !== 'publish' ) {
+		_prime_post_caches( array_unique( wp_list_pluck( $events, 'notification_id' ) ), false, false );
+		foreach ( $events as $e ) {
+			// Only published notifications count
+			$post = get_post( $e['notification_id'] );
+			if ( ! $post || $post->post_type !== 'nc_notification' || $post->post_status !== 'publish' ) continue;
+			$this->track_event( $e['notification_id'], $e['event_type'], $user_id, $session_id, $e['page_url'] );
+			$stored++;
+		}
+
+		if ( ! $stored ) {
 			return new WP_Error( 'invalid_notification', 'Notification not found', [ 'status' => 404 ] );
 		}
 
-		// Session ID from cookie or generate one
-		$session_id = $_COOKIE['nc_session'] ?? wp_generate_uuid4();
-
-		$this->track_event( $notification_id, $event_type, $user_id, $session_id, $page_url );
-
-		return rest_ensure_response( [ 'success' => true, 'session_id' => $session_id ] );
+		return rest_ensure_response( [ 'success' => true, 'stored' => $stored, 'session_id' => $session_id ] );
 	}
 
 	/**

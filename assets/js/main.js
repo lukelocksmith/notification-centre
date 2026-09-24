@@ -248,25 +248,126 @@
     let triggerListenersInitialized = false;
     let triggerCheckInterval = null; // Reference to stop interval when all triggers done
 
-    // Analytics tracking (fire-and-forget)
-    function trackEvent(notificationId, eventType) {
-        if (!notificationId) return;
-        var body = JSON.stringify({
-            notification_id: notificationId,
-            event_type: eventType,
-            page_url: window.location.href
-        });
+    // Analytics: events are queued and sent as ONE request per page view (every
+    // request boots WordPress). Flushed when the page is hidden or left, and shortly
+    // after a burst so a long visit doesn't hold events until it ends.
+    const EVENT_BATCH_MAX = 20;
+    let eventQueue = [];
+    let eventFlushTimer = null;
+    function flushEvents() {
+        if (eventFlushTimer) { clearTimeout(eventFlushTimer); eventFlushTimer = null; }
+        if (eventQueue.length === 0) return;
+        const batch = eventQueue.splice(0, EVENT_BATCH_MAX);
+        const body = JSON.stringify({ events: batch });
+        let sent = false;
         if (navigator.sendBeacon) {
-            var blob = new Blob([body], { type: 'application/json' });
-            navigator.sendBeacon(apiRoot + 'events', blob);
-        } else {
+            try { sent = navigator.sendBeacon(apiRoot + 'events', new Blob([body], { type: 'application/json' })); } catch (e) { sent = false; }
+        }
+        if (!sent) {
             fetch(apiRoot + 'events', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': ncData.nonce },
+                headers: { 'Content-Type': 'application/json' },
                 body: body,
                 keepalive: true
             }).catch(function() {});
         }
+        if (eventQueue.length) flushEvents();
+    }
+    function trackEvent(notificationId, eventType) {
+        if (!notificationId) return;
+        eventQueue.push({ notification_id: notificationId, event_type: eventType, page_url: window.location.href });
+        if (eventQueue.length >= EVENT_BATCH_MAX) { flushEvents(); return; }
+        if (!eventFlushTimer) eventFlushTimer = setTimeout(flushEvents, 10000);
+    }
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden') flushEvents();
+    });
+    window.addEventListener('pagehide', flushEvents);
+
+    // Anything painted before the visitor's first input counts toward LCP, and a popup
+    // image in the middle of the screen easily becomes the "largest" element. So
+    // automatic popups (delay / time on page / inactivity / no trigger) are shown only
+    // after the first real input. mousemove and programmatic scroll don't end LCP,
+    // so they don't count here either.
+    // The popup appears a moment AFTER that first input, not on it: shown on touchstart,
+    // it lands under the finger and the same tap's click then closes it or opens its link.
+    const INTERACTION_SETTLE_MS = 800;
+    let userInteracted = false;
+    let interactionReadyAt = 0;
+    const interactionWaiters = [];
+    const INTERACTION_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
+    function runWaiters() {
+        interactionWaiters.splice(0).forEach(fn => { try { fn(); } catch (e) { console.error('NC:', e); } });
+    }
+    function onFirstInteraction() {
+        if (userInteracted) return;
+        userInteracted = true;
+        interactionReadyAt = Date.now() + INTERACTION_SETTLE_MS;
+        INTERACTION_EVENTS.forEach(t => window.removeEventListener(t, onFirstInteraction, true));
+        setTimeout(runWaiters, INTERACTION_SETTLE_MS);
+    }
+    if (window.ncFirstInput) {
+        // main.js is loaded by the page loader on first input, so that input already happened.
+        userInteracted = true;
+        interactionReadyAt = window.ncFirstInput + INTERACTION_SETTLE_MS;
+        setTimeout(runWaiters, Math.max(0, interactionReadyAt - Date.now()));
+    } else {
+        INTERACTION_EVENTS.forEach(t => window.addEventListener(t, onFirstInteraction, { capture: true, passive: true }));
+    }
+    function whenInteracted(fn) {
+        if (!userInteracted || Date.now() < interactionReadyAt) interactionWaiters.push(fn);
+        else fn();
+    }
+
+    // Fluent Forms bundle (CSS + jQuery plugin) is loaded on demand, right before a
+    // notification carrying a form is rendered, instead of on every page.
+    let fluentLoad = null;
+    let fluentReady = !ncData.fluentForms;
+    const hasFluentForm = html => /frm-fluent-form/.test(html || '');
+    function loadAsset(tag, attrs) {
+        return new Promise((resolve, reject) => {
+            const el = document.createElement(tag);
+            Object.keys(attrs).forEach(k => { el[k] = attrs[k]; });
+            el.onload = resolve;
+            el.onerror = reject;
+            document.head.appendChild(el);
+        });
+    }
+    const externalScripts = {};
+    function loadExternalScript(src) {
+        if (!/^https:\/\//.test(src)) return Promise.resolve();
+        if (!externalScripts[src]) {
+            externalScripts[src] = loadAsset('script', { src: src, async: true })
+                .catch(err => console.error('NC: script failed to load', src, err));
+        }
+        return externalScripts[src];
+    }
+    function loadFluentAssets() {
+        if (fluentLoad) return fluentLoad;
+        const cfg = ncData.fluentForms;
+        if (!cfg) {
+            fluentReady = true;
+            return (fluentLoad = Promise.resolve());
+        }
+        Object.keys(cfg.models || {}).forEach(id => {
+            const k = 'fluent_form_model_' + id;
+            if (!window[k]) window[k] = cfg.models[id];
+        });
+        // The page may already ship Fluent Forms itself (a form in the content).
+        if (typeof window.fluentFormApp === 'function' || document.getElementById('fluent-form-submission-js')) {
+            fluentReady = true;
+            return (fluentLoad = Promise.resolve());
+        }
+        if (!window.fluentFormVars) window.fluentFormVars = cfg.vars;
+        // Styles: wait for them (so the form never flashes unstyled), but never longer than 3 s.
+        const css = Promise.all((cfg.css || []).map(href => loadAsset('link', { rel: 'stylesheet', href: href }).catch(() => {})));
+        const cssOrTimeout = Promise.race([css, new Promise(r => setTimeout(r, 3000))]);
+        const js = (window.jQuery ? Promise.resolve() : loadAsset('script', { src: cfg.jquery, async: false }))
+            .then(() => loadAsset('script', { src: cfg.js, async: false }));
+        fluentLoad = Promise.all([cssOrTimeout, js])
+            .catch(err => console.error('NC: Fluent Forms assets failed to load', err))
+            .then(() => { fluentReady = true; });
+        return fluentLoad;
     }
 
     // Legacy migration: if it was array, convert to object
@@ -371,10 +472,13 @@
 
         // Global Helper for Fluent Forms
         window.ncInitFluentForms = function (container) {
-            if (typeof jQuery === 'undefined') return;
-
             const forms = container.querySelectorAll('form.frm-fluent-form');
             if (forms.length === 0) return;
+            if (!fluentReady) {
+                loadFluentAssets().then(() => { fluentReady = true; window.ncInitFluentForms(container); });
+                return;
+            }
+            if (typeof jQuery === 'undefined') return;
 
             forms.forEach(form => {
                 const $form = jQuery(form);
@@ -571,6 +675,12 @@
 
         fetchNotifications();
 
+        window.ncMainReady = true;
+        if (window.ncPendingBell && bellContainer) {
+            window.ncPendingBell = false;
+            setTimeout(toggleDrawer, 0);
+        }
+
         // CTA click tracking (delegated)
         document.addEventListener('click', function(e) {
             var ctaBtn = e.target.closest('.nc-btn, .nc-floating-btn, .nc-topbar-btn, .nc-image-link');
@@ -582,19 +692,85 @@
         });
     }
 
+    function cleanPageUrl() {
+        // Declared here, not at module level: init() runs synchronously above this point.
+        const TRACKING_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+            'fbclid', 'gclid', 'gbraid', 'wbraid', 'msclkid', 'ttclid', 'gad_source', 'gad_campaignid',
+            '_ga', '_gl', 'mc_cid', 'mc_eid'];
+        try {
+            const u = new URL(window.location.href);
+            TRACKING_PARAMS.forEach(p => u.searchParams.delete(p));
+            u.hash = '';
+            return u.toString();
+        } catch (e) {
+            return window.location.href.split('#')[0];
+        }
+    }
+
+    // "Customers only" and rotation groups are decided here, in the browser: the REST
+    // answer is shared by everyone through the page cache, so the server can't.
+    function isCustomer() {
+        return ncData.isCustomer === true || ncData.isCustomer === '1' ||
+            /(?:^|;\s*)(?:nc_customer|wdf_klient)=1(?:;|$)/.test(document.cookie);
+    }
+    function applyAudienceAndRotation(list) {
+        const customer = isCustomer();
+        const visible = list.filter(n => !(n.settings && n.settings.customers_only) || customer);
+        // Per rotation group keep at most one item: none while the group's shared limit
+        // is used up, otherwise the one shown longest ago (ties: random).
+        const r = ncData.rotation || {};
+        const winMs = (r.windowDays || 7) * 864e5, gapMs = (r.minHours || 24) * 36e5, maxShows = r.maxShows || 3;
+        const now = Date.now();
+        const groups = {};
+        visible.forEach(n => {
+            const g = n.settings && n.settings.rotation_group;
+            if (g) (groups[g] = groups[g] || []).push(n);
+        });
+        const drop = new Set();
+        Object.keys(groups).forEach(g => {
+            const members = groups[g];
+            const last = {};
+            let all = [];
+            members.forEach(n => {
+                const ts = (impressions[n.id] || []).filter(t => now - t < winMs);
+                all = all.concat(ts);
+                last[n.id] = ts.length ? Math.max(...ts) : 0;
+            });
+            const blocked = all.length >= maxShows || (all.length > 0 && now - Math.max(...all) < gapMs);
+            let pick = null;
+            if (!blocked) {
+                const oldest = Math.min(...members.map(n => last[n.id]));
+                const cands = members.filter(n => last[n.id] === oldest);
+                pick = cands[Math.floor(Math.random() * cands.length)];
+            }
+            members.forEach(n => { if (n !== pick) drop.add(n.id); });
+        });
+        return visible.filter(n => !drop.has(n.id));
+    }
+
     function fetchNotifications() {
         // Use inline data if available (rendered by PHP, cached by LSCache with page)
+        // Guests get a publicly cached answer, so the URL must carry everything the answer
+        // depends on: device class (viewport, same breakpoint as matchesDeviceWidth), cache
+        // version, and the page URL without per-click ad ids (they'd make every URL unique).
+        const params = {
+            url: cleanPageUrl(),
+            pid: getPostId(),
+            d: window.innerWidth < NC_MOBILE_MAX_WIDTH ? 'mobile' : 'desktop',
+            v: ncData.cacheVersion || '0'
+        };
+        if (/[?&]nc_preview=1/.test(location.search)) params.nc_preview = '1';
         const cptPromise = (ncData.notifications && Array.isArray(ncData.notifications))
             ? Promise.resolve(ncData.notifications)
-            : fetch(apiRoot + 'notifications?' + new URLSearchParams({
-                url: window.location.href,
-                pid: getPostId()
-            }).toString(), {
-                headers: { 'X-WP-Nonce': ncData.nonce }
-            }).then(res => res.json());
+            : fetch(apiRoot + 'notifications?' + new URLSearchParams(params).toString(), {
+                headers: ncData.userId > 0 ? { 'X-WP-Nonce': ncData.nonce } : {}
+            }).then(res => {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            });
 
         // User notifications still need AJAX (per-user, can't be cached with page)
-        const userPromise = (ncData.userId > 0)
+        const userPromise = (ncData.userId > 0 && ncData.wooNotifications)
             ? fetch(apiRoot + 'user-notifications', {
                 headers: { 'X-WP-Nonce': ncData.nonce }
             }).then(res => res.json()).catch(() => [])
@@ -649,9 +825,11 @@
                     return n;
                 });
 
+                const visibleCpt = applyAudienceAndRotation(normalizedCpt);
+
                 // Merge: pinned CPT first, then user notifications, then remaining CPT
-                const pinned = normalizedCpt.filter(n => n.settings.sidebar_pinned || n.settings.pinned);
-                const nonPinned = normalizedCpt.filter(n => !(n.settings.sidebar_pinned || n.settings.pinned));
+                const pinned = visibleCpt.filter(n => n.settings.sidebar_pinned || n.settings.pinned);
+                const nonPinned = visibleCpt.filter(n => !(n.settings.sidebar_pinned || n.settings.pinned));
                 notifications = [...pinned, ...userData, ...nonPinned];
 
                 renderAll();
@@ -915,6 +1093,7 @@
             const isFloating = (val === '1' || val === 1 || val === true);
 
             if (!isFloating) return;
+            if (countdownCutOffPassed(n)) return;
 
             if (shownSessionIds.includes(n.id)) {
                 ncLog(`NC: ID ${n.id} already shown this session, skipping`);
@@ -1038,10 +1217,12 @@
             triggerNotifications.forEach(n => {
                 const triggers = n.settings.triggers || {};
                 if (triggers.click && triggers.click_selector && !triggersFired[n.id]) {
-                    if (e.target.matches(triggers.click_selector) ||
-                        e.target.closest(triggers.click_selector)) {
+                    let hit = false;
+                    // An invalid selector typed in the admin must not break every click.
+                    try { hit = !!(e.target.closest && e.target.closest(triggers.click_selector)); } catch (err) { hit = false; }
+                    if (hit) {
                         ncLog(`NC: Click trigger matched for ID ${n.id}`);
-                        fireTriggerNotification(n);
+                        fireTriggerNotification(n, 'click');
                     }
                 }
             });
@@ -1082,14 +1263,15 @@
 
             if (shouldFire) {
                 ncLog(`NC: Trigger '${triggerType}' fired for ID ${n.id}`);
-                fireTriggerNotification(n);
+                fireTriggerNotification(n, triggerType);
             }
         });
     }
 
-    function fireTriggerNotification(n) {
+    function fireTriggerNotification(n, firedBy) {
         if (triggersFired[n.id]) return;
         triggersFired[n.id] = true;
+        n._ncFiredBy = firedBy;
 
         // Add to front of queue (triggered notifications have priority)
         floatingQueue.unshift(n);
@@ -1131,19 +1313,22 @@
 
         ncLog(`NC: Scheduling next from global queue: ID ${n.id} in ${delay}ms`);
 
-        if (delay > 0) {
-            setTimeout(() => {
-                if (activeFloatingId) {
-                    floatingQueue.unshift(n);
-                    return;
-                }
-                activeFloatingId = n.id;
-                showFloating(n);
-            }, delay);
-        } else {
-            // No delay - show immediately
+        const present = () => {
+            if (activeFloatingId) {
+                floatingQueue.unshift(n);
+                return;
+            }
             activeFloatingId = n.id;
             showFloating(n);
+        };
+        // Exit intent and click are explicit visitor actions; everything else waits
+        // for the first input (see whenInteracted) so it can't become the page's LCP.
+        const gated = () => (n._ncFiredBy === 'exit_intent' || n._ncFiredBy === 'click') ? present() : whenInteracted(present);
+
+        if (delay > 0) {
+            setTimeout(gated, delay);
+        } else {
+            gated();
         }
     }
 
@@ -1168,6 +1353,19 @@
             ncLog(`NC: ID ${n.id} skipped, window width ${window.innerWidth}px doesn't match device_target "${n.settings.device_target}"`);
             activeFloatingId = null;
             setTimeout(() => showNextFromGlobalQueue(), 50);
+            return;
+        }
+
+        // A form popup waits for the Fluent Forms bundle and its captcha script (both
+        // rendered server-side in REST, so never printed on the page); the queue slot
+        // stays taken meanwhile.
+        if ((!fluentReady && hasFluentForm(n.body)) || (n.scripts && n.scripts.length && !n._ncScriptsLoaded)) {
+            const extra = (n.scripts || []).map(loadExternalScript);
+            Promise.all([hasFluentForm(n.body) ? loadFluentAssets() : null, ...extra]).then(() => {
+                if (hasFluentForm(n.body)) fluentReady = true;
+                n._ncScriptsLoaded = true;
+                showFloating(n);
+            });
             return;
         }
 
@@ -1585,6 +1783,7 @@
         const dismissed = getTopBarDismissed();
         topBarItems = notifications.filter(n => {
             if (!n.settings.topbar) return false;
+            if (countdownCutOffPassed(n)) return false;
 
             // Check if dismissed
             return !isDismissed(n.id, dismissed, n.settings.repeat_val, n.settings.repeat_unit);
@@ -1604,8 +1803,25 @@
             return;
         }
 
-        // Build HTML
         const config = ncData.topBar;
+
+        // The server already printed this exact bar (same items, same order): adopt it
+        // instead of rebuilding, so nothing on the page moves.
+        const ssrIds = topBarContainer.dataset.ssr;
+        delete topBarContainer.dataset.ssr;
+        if (ssrIds && ssrIds === topBarItems.map(n => n.id).join(',') &&
+            topBarContainer.querySelectorAll('.nc-topbar-item').length === topBarItems.length) {
+            topBarContainer.style.display = 'flex';
+            document.body.classList.add('nc-topbar-active');
+            topBarItems.forEach(function(n) { trackViewOnce(n.id); });
+            topBarCurrentIndex = 0;
+            const ssrClose = topBarContainer.querySelector('.nc-topbar-close');
+            if (ssrClose) ssrClose.addEventListener('click', dismissTopBar);
+            if (topBarItems.length > 1) startTopBarRotation();
+            return;
+        }
+
+        // Build HTML
         let html = '<div class="nc-topbar-inner">';
 
         // Dots indicator (only if multiple items)
@@ -1804,6 +2020,25 @@
         return target;
     }
 
+    // Daily auto-hide countdown whose cut-off already passed today ("order by 10:00"
+    // at 10:02): the item must disappear, not restart counting down to tomorrow.
+    function countdownCutOffPassed(n) {
+        const c = n.settings && n.settings.countdown;
+        if (!c || !c.enabled || !c.autohide) return false;
+        if (c.type === 'daily' && c.time) {
+            // Same rule as the server (class-nc-logic.php): hidden once site time >= cut-off.
+            let hm;
+            try {
+                hm = new Date().toLocaleTimeString('en-GB', { timeZone: ncData.timezone || 'Europe/Warsaw', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+            } catch (e) {
+                return false;
+            }
+            return hm >= c.time.padStart(5, '0');
+        }
+        if (c.type === 'date' && c.date) return new Date(c.date).getTime() <= Date.now();
+        return false;
+    }
+
     function getCountdownTarget(countdown) {
         if (!countdown || !countdown.enabled) return null;
 
@@ -1883,9 +2118,20 @@
             // For daily type, check if we need to reset or autohide
             if (el.dataset.type === 'daily' && target < Date.now()) {
                 if (el.dataset.autohide === '1') {
-                    // Autohide: remove the notification from DOM
-                    const notifEl = el.closest('.nc-notification, .nc-topbar, .nc-floating');
-                    if (notifEl) notifEl.remove();
+                    // Autohide only this notification: in the bar, drop just its slide
+                    // (other bars stay), a popup closes properly (overlay + queue).
+                    const barItem = el.closest('.nc-topbar-item');
+                    const floating = el.closest('.nc-floating');
+                    if (barItem) {
+                        el.remove();
+                        renderTopBar();
+                    } else if (floating) {
+                        el.remove();
+                        closeFloating(floating.dataset.id, !!floating.closest('.nc-pos-center-overlay'));
+                    } else {
+                        const notifEl = el.closest('.nc-item, .nc-notification');
+                        if (notifEl) notifEl.remove(); else el.remove();
+                    }
                     return;
                 }
                 const [hours, minutes] = (el.dataset.time || '10:00').split(':').map(Number);
