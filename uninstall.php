@@ -21,6 +21,7 @@ wp_clear_scheduled_hook( 'nc_cleanup_old_events' );
 wp_clear_scheduled_hook( 'nc_cleanup_expired_transients' );
 wp_clear_scheduled_hook( 'nc_abandoned_cart_check' );
 wp_clear_scheduled_hook( 'nc_user_notifications_cleanup' );
+wp_clear_scheduled_hook( 'nc_hourly_cache_purge' );
 
 // SEC-N3: always remove secrets/sensitive options on uninstall, even though other
 // configuration and notification data are intentionally preserved. A leftover
@@ -33,7 +34,10 @@ delete_transient( 'nc_github_update_data' );
 // Clean up expired transients only (not options)
 global $wpdb;
 $wpdb->query(
-    "DELETE a, b FROM {$wpdb->options} a
-     LEFT JOIN {$wpdb->options} b ON b.option_name = REPLACE(a.option_name, '_timeout_', '_')
-     WHERE a.option_name LIKE '_transient_timeout_nc_%' AND a.option_value < UNIX_TIMESTAMP()"
+    $wpdb->prepare(
+        "DELETE a, b FROM {$wpdb->options} a
+         LEFT JOIN {$wpdb->options} b ON b.option_name = REPLACE(a.option_name, '_timeout_', '_')
+         WHERE a.option_name LIKE %s AND a.option_value < UNIX_TIMESTAMP()",
+        $wpdb->esc_like( '_transient_timeout_nc_' ) . '%'
+    )
 );

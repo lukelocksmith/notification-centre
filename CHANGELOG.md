@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.2] - 2026-09-24
+### Changed
+- **Ciasteczko klienta `nc_customer` tylko przy zgodzie Marketing** w GetTerms (wcześniej Functional albo Marketing). Znacznik służy kierowaniu promocji, więc wymaga zgody marketingowej; przy jej braku lub cofnięciu ciasteczko jest usuwane.
+### Performance / Security
+- `GET /nc/v1/notifications`: `pid` z adresu jest brany pod uwagę tylko dla opublikowanego wpisu (boty z losowymi ID nie tworzą własnych wpisów cache). Odpowiedź dla gości ma `Cache-Control: public, max-age` (do 300 s i nie dłużej niż do najbliższej granicy harmonogramu), więc działa też bez LiteSpeed i w przeglądarce; odpowiedzi dla zalogowanych `private, no-store`.
+- Wyłączenie wtyczki zatrzymuje jej zadania cron; `uninstall.php` czyści też `nc_hourly_cache_purge` i ma poprawnie escapowane `LIKE`.
+- Nagłówki wtyczki: `Requires at least: 5.8`, `Requires PHP: 7.4`.
+
 ## [1.10.1] - 2026-09-24
 ### Fixed
 - **Rotacja: zamknięty popup blokował całą grupę.** Z grupy wybierany był popup „najdawniej pokazany”, zanim sprawdzono, czy w ogóle da się go pokazać. Klient, który zamknął Q4 (zamknięty na zawsze), po pierwszym Hydro nie dostawał już nic z grupy `promo-center`. Teraz w losowaniu biorą udział tylko popupy, które można pokazać (nie zamknięte, w limicie wyświetleń, nie pokazane w tej wizycie, pasujące do urządzenia, przed godziną graniczną). Wspólny limit grupy bez zmian.
