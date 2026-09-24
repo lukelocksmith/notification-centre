@@ -3,7 +3,7 @@
  * Plugin Name: Notification Centre
  * Plugin URI:  https://agencyjnie.pl
  * Description: Advanced on-site notification center with OneSignal integration.
- * Version:     1.10.0
+ * Version:     1.10.1
  * Author:      important.is
  * Text Domain: notification-centre
  */
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define Constants
-define( 'NC_VERSION', '1.10.0' );
+define( 'NC_VERSION', '1.10.1' );
 define( 'NC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -27,6 +27,7 @@ class Notification_Centre {
 	private $front_data = null;
 	private $ssr_topbar = null;
 	private $topbar_printed = false;
+	private $bell_rendered = false;
 
 	public static function get_instance() {
 		if ( null === self::$instance ) {
@@ -451,6 +452,7 @@ class Notification_Centre {
 	}
 
 	public function render_shortcode( $atts ) {
+        $this->bell_rendered = true;
 		// Get bell icon settings
         $bell_style = get_option( 'nc_bell_style', 'outline' );
         $bell_color = get_option( 'nc_bell_color', '#000000' );
@@ -473,6 +475,12 @@ class Notification_Centre {
      */
     public function render_drawer_in_footer() {
         if ( $this->should_skip_frontend() ) return;
+        // The drawer (a modal dialog for screen readers, with focusable buttons) only has a
+        // purpose next to the bell. Without the bell it is not printed at all.
+        if ( ! $this->bell_rendered ) {
+            echo '<div id="nc-toast-container" class="nc-toast-container" aria-live="polite" role="status"></div>';
+            return;
+        }
         ?>
         <div id="nc-drawer" class="nc-drawer" role="dialog" aria-modal="true" aria-label="Panel powiadomień">
             <div class="nc-drawer-header"><h3>Powiadomienia</h3><button class="nc-close-drawer" aria-label="Zamknij">&times;</button></div>
@@ -526,6 +534,13 @@ class Notification_Centre {
             }
         ) );
         if ( ! $items ) return false;
+        // "Below the header" can be printed in place only on Bricks (bricks_after_header).
+        // Elsewhere main.js has to move the bar, so keep those themes on the JS path.
+        if ( ! defined( 'BRICKS_VERSION' ) ) {
+            foreach ( $items as $n ) {
+                if ( ( $n['settings']['topbar_position'] ?? 'above' ) === 'below' ) return false;
+            }
+        }
         usort( $items, function ( $a, $b ) {
             return ( $b['settings']['topbar_priority'] ?? 0 ) - ( $a['settings']['topbar_priority'] ?? 0 );
         } );
@@ -565,7 +580,7 @@ class Notification_Centre {
         $this->topbar_printed = true;
         $items = $this->get_ssr_topbar();
         if ( ! $items || $current === 'wp_footer' ) {
-            echo '<div id="nc-topbar" class="nc-topbar" role="banner" aria-label="Ogłoszenie" style="display:none;"></div>';
+            echo '<div id="nc-topbar" class="nc-topbar" role="region" aria-label="Ogłoszenie" style="display:none;"></div>';
             return;
         }
         echo $this->topbar_markup( $items );
@@ -602,7 +617,7 @@ class Notification_Centre {
             if ( ! empty( $first['text'] ) ) $style .= 'color:' . self::js_esc( $first['text'] ) . ';';
         }
 
-        $html = '<div id="nc-topbar" class="' . esc_attr( implode( ' ', $classes ) ) . '" role="banner" aria-label="Ogłoszenie" data-ssr="' . esc_attr( implode( ',', $ids ) ) . '" style="' . $style . '">';
+        $html = '<div id="nc-topbar" class="' . esc_attr( implode( ' ', $classes ) ) . '" role="region" aria-label="Ogłoszenie" data-ssr="' . esc_attr( implode( ',', $ids ) ) . '" style="' . $style . '">';
         $html .= '<div class="nc-topbar-inner">';
         if ( count( $items ) > 1 ) {
             $html .= '<div class="nc-topbar-dots">';
@@ -637,7 +652,7 @@ class Notification_Centre {
             if ( empty( $n['settings']['topbar_permanent'] ) ) $all_permanent = false;
         }
         if ( ! $all_permanent ) {
-            $html .= '<button class="nc-topbar-close" title="Zamknij">&times;</button>';
+            $html .= '<button class="nc-topbar-close" type="button" title="Zamknij" aria-label="Zamknij">&times;</button>';
         }
         $html .= '</div></div>';
         // Runs at parse time, before first paint: fresh countdown digits even from a cached
@@ -649,8 +664,10 @@ class Notification_Centre {
             . 'b.querySelectorAll(".nc-topbar-item:not([data-perm])").forEach(function(i){var id=i.getAttribute("data-id"),at=Array.isArray(ds)?(ds.indexOf(+id)>-1||ds.indexOf(id)>-1?Date.now():0):ds[id];if(!at)return;var rv=+i.getAttribute("data-rv");'
             . 'if(!rv||Date.now()<at+rv*(U[i.getAttribute("data-ru")]||U.days)){i.remove();b.removeAttribute("data-ssr")}});'
             . 'if(!b.querySelector(".nc-topbar-item:not([data-perm])")){var cb=b.querySelector(".nc-topbar-close");if(cb)cb.remove()}'
+            // A removed slide may have been the active one: activate the first left, drop the dots.
+            . 'function fix(){var its=b.querySelectorAll(".nc-topbar-item");if(its.length&&!b.querySelector(".nc-topbar-item.active")){its[0].classList.add("active");b.style.backgroundColor=its[0].style.backgroundColor;b.style.color=its[0].style.color}if(its.length<2){var dt=b.querySelector(".nc-topbar-dots");if(dt)dt.remove()}}fix();'
             . 'function t(){if(window.ncMainReady){clearInterval(x);return}b.querySelectorAll(".nc-countdown").forEach(function(c){var d=+c.getAttribute("data-target")-Date.now();'
-            . 'if(d<=0&&c.getAttribute("data-autohide")==="1"){var i=c.closest(".nc-topbar-item");if(i)i.remove();return}'
+            . 'if(d<=0&&c.getAttribute("data-autohide")==="1"){var i=c.closest(".nc-topbar-item");if(i){i.remove();b.removeAttribute("data-ssr");fix()}return}'
             . 'd=Math.max(0,Math.floor(d/1000));var h=c.querySelector(".nc-cd-hours"),m=c.querySelector(".nc-cd-minutes"),s=c.querySelector(".nc-cd-seconds");'
             . 'if(h)h.textContent=p(Math.floor(d%86400/3600));if(m)m.textContent=p(Math.floor(d%3600/60));if(s)s.textContent=p(d%60)});'
             . 'if(!b.querySelector(".nc-topbar-item")){b.style.display="none";b.removeAttribute("data-ssr");document.body.classList.remove("nc-topbar-active");clearInterval(x)}}'
@@ -665,7 +682,12 @@ class Notification_Centre {
             $target = DateTimeImmutable::createFromFormat( 'Y-m-d H:i', $now->format( 'Y-m-d' ) . ' ' . $cd['time'], $tz );
             if ( $target && $target <= $now ) $target = $target->modify( '+1 day' );
         } elseif ( $cd['type'] === 'date' && $cd['date'] ) {
-            $target = new DateTimeImmutable( $cd['date'], $tz );
+            // A malformed date (import, manual meta edit) must not take the page down.
+            try {
+                $target = new DateTimeImmutable( $cd['date'], $tz );
+            } catch ( Exception $e ) {
+                return '';
+            }
         } else {
             return '';
         }

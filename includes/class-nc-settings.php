@@ -12,6 +12,8 @@ class NC_Settings {
 		
 		// Invalidate options cache when any nc_ option is updated
 		add_action( 'update_option', [ $this, 'maybe_invalidate_cache' ], 10, 1 );
+		// First save of a setting goes through add_option(), which fires added_option instead.
+		add_action( 'added_option', [ $this, 'maybe_invalidate_cache' ], 10, 1 );
 
 		// Invalidate notification caches when a notification is saved, trashed or deleted
 		add_action( 'save_post_nc_notification', [ $this, 'invalidate_notification_caches' ] );
@@ -110,6 +112,12 @@ class NC_Settings {
 	public function maybe_invalidate_cache( $option_name ) {
 		if ( strpos( $option_name, 'nc_' ) === 0 ) {
 			delete_transient( 'nc_all_options' );
+		}
+		// Settings saved on the NC settings screen (bar on/off, sticky, colors, units) are
+		// baked into cached page HTML: the server-rendered bar, CSS variables and ncData.
+		// One full purge per save, never for the internal options the plugin updates itself.
+		if ( ! empty( $_POST['option_page'] ) && $_POST['option_page'] === 'nc_settings_group' && strpos( $option_name, 'nc_' ) === 0 ) {
+			$this->purge_pages();
 		}
 	}
 

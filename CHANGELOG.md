@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.10.1] - 2026-09-24
+### Fixed
+- **Rotacja: zamknięty popup blokował całą grupę.** Z grupy wybierany był popup „najdawniej pokazany”, zanim sprawdzono, czy w ogóle da się go pokazać. Klient, który zamknął Q4 (zamknięty na zawsze), po pierwszym Hydro nie dostawał już nic z grupy `promo-center`. Teraz w losowaniu biorą udział tylko popupy, które można pokazać (nie zamknięte, w limicie wyświetleń, nie pokazane w tej wizycie, pasujące do urządzenia, przed godziną graniczną). Wspólny limit grupy bez zmian.
+- **Zmiana ustawień wtyczki czyści cache stron** (np. „Wyłącz pasek”, kolory, sticky są w HTML strony od 1.10). Jedno czyszczenie na zapis strony ustawień, tylko gdy coś się zmieniło.
+- Autoukrycie licznika w popupie blokowało kolejkę popupów (ID jako tekst).
+- Niepoprawna data licznika w pasku powodowała błąd krytyczny strony (PHP 8.3); teraz licznik jest pomijany.
+- Skrypt przy pasku z serwera po usunięciu zamkniętego lub wygasłego slajdu aktywuje następny (zamiast pustego paska przy kilku paskach).
+- Motywy bez Bricks: pasek „pod nagłówkiem” zostaje na ścieżce JS (w 1.10.0 stawał nad nagłówkiem).
+### Accessibility
+- Szuflada powiadomień (dialog modalny z przyciskami) jest drukowana tylko na stronach z dzwonkiem `[notification_center]`; wcześniej była ukrytym dialogiem na każdej stronie.
+- Popup na środku to dialog modalny: `role="dialog"`, `aria-modal`, nazwa z tytułu, fokus na „Zamknij” po pokazaniu, Tab w pętli, powrót fokusu po zamknięciu. Popupy w rogach mają `role="status"` zamiast `alert`.
+- Krzyżyki mają `aria-label="Zamknij"`, popup z samym obrazkiem ma `alt` z pola „Tekst alternatywny” obrazka w bibliotece mediów, a gdy puste, z tytułu (WCAG F89), pasek ma `role="region"` zamiast drugiego `banner`.
+
+
 ## [1.10.0] - 2026-09-24
 ### Added
 - **Odbiorcy „Tylko klienci (z zamówieniem)”.** Zalogowani z co najmniej jednym zamówieniem albo przeglądarki oznaczone po zakupie ciasteczkiem `nc_customer` (strona podziękowania za zamówienie i zalogowany klient, tylko po zgodzie Functional albo Marketing w banerze GetTerms; przy cofnięciu zgody ciasteczko jest usuwane). O widoczności rozstrzyga przeglądarka, więc odpowiedź REST i strony zostają w cache. Skrypt znacznika jest dołączany tylko, gdy któreś opublikowane powiadomienie używa tej opcji. Honorowane jest też ciasteczko `wdf_klient` z mu-pluginu `wdf-nc-customers-only.php`, który ta funkcja zastępuje.
