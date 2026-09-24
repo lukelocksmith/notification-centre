@@ -19,14 +19,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Build notification-centre.zip
         run: |
-          mkdir -p /tmp/build/notification-centre
-          rsync -a \
-            --exclude='.git' \
-            --exclude='.github' \
-            --exclude='*.zip' \
-            . /tmp/build/notification-centre/
+          bash bin/build.sh /tmp/build/notification-centre
           cd /tmp/build
           zip -r notification-centre.zip notification-centre/
 

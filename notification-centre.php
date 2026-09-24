@@ -3,7 +3,7 @@
  * Plugin Name: Notification Centre
  * Plugin URI:  https://agencyjnie.pl
  * Description: Advanced on-site notification center with OneSignal integration.
- * Version:     1.10.2
+ * Version:     1.10.3
  * Author:      important.is
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define Constants
-define( 'NC_VERSION', '1.10.2' );
+define( 'NC_VERSION', '1.10.3' );
 define( 'NC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -299,8 +299,9 @@ class Notification_Centre {
 
 		$this->front_data = [
             'assets' => [
-                'js'  => add_query_arg( 'ver', NC_VERSION, NC_PLUGIN_URL . 'assets/js/main.js' ),
-                'css' => add_query_arg( 'ver', NC_VERSION, NC_PLUGIN_URL . 'assets/css/style.css' ),
+                // Release builds (bin/build.sh) ship minified copies; a git checkout has only sources.
+                'js'  => add_query_arg( 'ver', NC_VERSION, NC_PLUGIN_URL . ( file_exists( NC_PLUGIN_DIR . 'assets/js/main.min.js' ) ? 'assets/js/main.min.js' : 'assets/js/main.js' ) ),
+                'css' => add_query_arg( 'ver', NC_VERSION, NC_PLUGIN_URL . ( file_exists( NC_PLUGIN_DIR . 'assets/css/style.min.css' ) ? 'assets/css/style.min.css' : 'assets/css/style.css' ) ),
             ],
 			'root' => esc_url_raw( rest_url() ),
 			'version' => NC_VERSION,
@@ -363,7 +364,8 @@ class Notification_Centre {
             $like = $wpdb->esc_like( 'nc_' ) . '%';
             $results = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s",
+                    // The GitHub token is a secret: never copy it into this cached option set.
+                    "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s AND option_name <> 'nc_github_token'",
                     $like
                 ),
                 OBJECT

@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.10.3] - 2026-09-24
+### Security
+- **Zarządzanie powiadomieniami domyślnie tylko dla administratora** (`manage_options`). Wcześniej każdy z `edit_posts` (np. Autor, Kierownik sklepu) mógł opublikować popup widoczny dla wszystkich, w trybie raw także z własnym CSS. Wszystkie uprawnienia typu wpisu mapują się na filtr `nc_manage_capability`; strony, gdzie powiadomieniami zarządzają redaktorzy, mogą go rozszerzyć (np. `edit_others_posts`).
+- Token GitHub nie trafia już do cache opcji `nc_all_options`. Link w ustawieniach prowadzi do tokena „fine-grained” (tylko repozytorium wtyczki, Contents: Read-only) zamiast klasycznego tokena z dostępem do wszystkich repozytoriów.
+### Fixed
+- **Aktualizacje z GitHuba działają w tle**: aktualizator jest rejestrowany także w WP-Cron i WP-CLI, nie tylko po wejściu do panelu. Wcześniej automatyczne aktualizacje i `wp plugin update` nie widziały nowych wersji.
+### Performance
+- **Paczka release zawiera zminifikowane pliki** (`bin/build.sh`, terser i csso): `main.js` 105 KB → 40 KB (gzip 27 KB → 13 KB), `style.css` 50 KB → 30 KB. Wtyczka ładuje `*.min.*`, gdy istnieją; kopia z gita działa na plikach źródłowych. Paczka nie zawiera już katalogu `tests`.
+
 ## [1.10.2] - 2026-09-24
 ### Changed
 - **Ciasteczko klienta `nc_customer` tylko przy zgodzie Marketing** w GetTerms (wcześniej Functional albo Marketing). Znacznik służy kierowaniu promocji, więc wymaga zgody marketingowej; przy jej braku lub cofnięciu ciasteczko jest usuwane.
